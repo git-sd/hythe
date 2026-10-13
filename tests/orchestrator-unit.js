@@ -6,6 +6,7 @@ const { runDemo } = require('./orchestration-demo');
 const { createLine, verify } = require('../src/comms');
 const { createOrchestrator, extractJson, validatePlan, verdictOf, ensureReview, routeByCapability, projectListing, stepProblem } = require('../src/orchestrator');
 const { resolveRoster, matches } = require('../src/model-roster');
+const { fetchFailure } = require('../src/agent');
 
 let pass = 0, fail = 0;
 const check = (n, ok, x) => { ok ? pass++ : fail++; console.log((ok ? 'PASS ' : 'FAIL ') + n + (!ok && x !== undefined ? '  -> ' + JSON.stringify(x).slice(0, 400) : '')); };
@@ -226,6 +227,12 @@ const inst = (name, size, caps = ['completion', 'tools']) => ({ name, size: size
     const r = await o.run('Make a fizzbuzz');
     check('a clean run ends with the orchestrator\'s facts: every step with its model, status and what the tools did', r.ok && /Checked by the orchestrator from the tool log/.test(r.final) && /s1 coder \(fake-coder:7b\): done\. Tools: wrote fizzbuzz\.js/.test(r.final) && /s5 reviewer \(fake-review:3b\): done, VERDICT APPROVED\. Tools: 3 reads/.test(r.final) && /s3 fast \(fake-fast:1b\): done\. Tools: 2 reads/.test(r.final), r.final.slice(-900));
     await f.close(); }
+
+  // slow model load vs Ollama not running
+  { const slow = Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('Headers Timeout Error'), { code: 'UND_ERR_HEADERS_TIMEOUT' }) });
+    const refused = Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }) });
+    check('a headers timeout (model still loading from a slow disk) is NOT reported as "cannot reach Ollama"', /is running at http:\/\/h .* did not answer within 5 minutes/.test(fetchFailure(slow, 'http://h').message) && fetchFailure(slow, 'http://h').slowLoad === true, fetchFailure(slow, 'http://h').message);
+    check('a refused connection still says Ollama cannot be reached, and how to start it', /Cannot reach Ollama at http:\/\/h\. Start it/.test(fetchFailure(refused, 'http://h').message) && !fetchFailure(refused, 'http://h').slowLoad); }
 
   // a model that is not installed is replaced, visibly
   { const { f, l, o } = await mk({}, { installed: [MODELS.conductor, MODELS.coder, MODELS.reviewer], fallbackModel: MODELS.conductor });

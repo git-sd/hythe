@@ -125,7 +125,7 @@ function createAgent(opts) {
 
   const offered = () => tools.schemas.filter((t) => (allowedTools ? allowedTools.includes(t.function.name) : true) && tools.offeredTo(t.function.name, id));
 
-  const runnerDied = (e) => (e.status === 500 || !e.status) && /terminated|signal: killed|unexpected EOF/i.test(`${e.body || ''} ${e.message || ''}`);
+  const runnerDied = (e) => e.slowLoad || ((e.status === 500 || !e.status) && /terminated|signal: killed|unexpected EOF/i.test(`${e.body || ''} ${e.message || ''}`));
 
   async function* stream(body, signal) {
     const s = getSettings();
@@ -135,7 +135,7 @@ function createAgent(opts) {
       res = await fetch(`${s.host}/api/chat`, { method: 'POST', body: JSON.stringify(body), signal, headers: { 'Content-Type': 'application/json' } });
     } catch (e) {
       if (e.name === 'AbortError') throw e;
-      throw new Error(`Cannot reach Ollama at ${s.host}. Start it (open the Ollama app or run "ollama serve").`);
+      throw fetchFailure(e, s.host);
     }
     if (!res.ok) {
       const t = await res.text();
@@ -205,9 +205,9 @@ function createAgent(opts) {
       // Ollama's model runner died before answering (seen on a 16 GB PC with several models loaded: "signal: killed", "unexpected EOF").
       // The next request starts a fresh runner, so try once more, and say so.
       else if (!claude.isClaude(body.model) && runnerDied(e) && !content && !thinking && !calls.length && !signal.aborted) {
-        emit({ type: 'notice', text: `Ollama's model runner stopped (${String(e.body || e.message).slice(0, 160)}). Starting it again and retrying this request once.` });
+        emit({ type: 'notice', text: e.slowLoad ? `Ollama did not answer within 5 minutes (a big model loading from a slow disk?). Trying this request once more; what was already read is cached.` : `Ollama's model runner stopped (${String(e.body || e.message).slice(0, 160)}). Starting it again and retrying this request once.` });
         logRequest('runner restarted');
-        await new Promise((r) => setTimeout(r, 2000));
+        await new Promise((r) => setTimeout(r, e.slowLoad ? 0 : 2000));
         await run();
       } else throw e;
     }
@@ -400,4 +400,17 @@ async function runSubAgent(tctx, args, cfg = {}) {
   return (r.limit ? `[Step limit reached, partial result]\n` : '') + (out.length > 8000 ? out.slice(0, 8000) + '\n[truncated]' : out);
 }
 
-module.exports = { createAgent, runSubAgent, repairConv, ROLES, setDebugSink, hasDebugSink, debugEmit, scrub };
+// A failed fetch to Ollama: "not running" and "running but did not answer in time" are different problems. Node's fetch gives up waiting for
+// the first response after 5 minutes; a big model read from a cold or slow disk (seen: 17 MB/s) can take longer than that to load, and
+// calling that "cannot reach Ollama" sent people off to restart a server that was fine.
+function fetchFailure(e, host) {
+  const code = (e && e.cause && e.cause.code) || (e && e.code) || '';
+  if (/TIMEOUT/i.test(code) || (e && e.name === 'TimeoutError')) {
+    const err = new Error(`Ollama is running at ${host} but did not answer within 5 minutes. A big model loading from a slow disk can take that long: try again (the part already read is cached, so the next try is faster).`);
+    err.slowLoad = true;
+    return err;
+  }
+  return new Error(`Cannot reach Ollama at ${host}. Start it (open the Ollama app or run "ollama serve").`);
+}
+
+module.exports = { createAgent, runSubAgent, repairConv, ROLES, setDebugSink, hasDebugSink, debugEmit, scrub, fetchFailure };
