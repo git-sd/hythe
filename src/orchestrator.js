@@ -217,7 +217,7 @@ function createOrchestrator(opts) {
     return ok;
   }
   function makeAgent(def, timeoutSec = stepTimeoutSec) {
-    const system = `${ROLE_TEXT[def.role] || ROLE_TEXT.coder}\nYour name in this team is "${def.name}". You work for a conductor; reply to the step you are given.`;
+    const system = `${ROLE_TEXT[def.role] || ROLE_TEXT.coder}${def.focus ? `\nYour specialty: ${def.focus}.` : ''}\nYour name in this team is "${def.name}". You work for a conductor; reply to the step you are given.`;
     const agent = createAgent({
       id: 'orch-' + def.name, maxSteps,
       allowedTools: ROLE_TOOLS[def.role] || READ,
@@ -251,7 +251,7 @@ function createOrchestrator(opts) {
   }
 
   /* ----- prompts ----- */
-  const rosterText = () => roster.agents.map((a) => `- ${a.name} (model ${a.model}, role ${a.role}): ${ROLE_BLURB[a.role]}`).join('\n');
+  const rosterText = () => roster.agents.map((a) => `- ${a.name} (model ${a.model}, role ${a.role}): ${ROLE_BLURB[a.role]}${a.focus ? '; specialty: ' + a.focus : ''}`).join('\n');
   const planPrompt = (task) => [
     'You are the conductor of a team of specialist agents. Each agent runs on its own model and works on its own; they cannot see each other\'s chats.',
     'The agents:', rosterText(), '',
@@ -259,7 +259,7 @@ function createOrchestrator(opts) {
     'The user\'s task:', task, '',
     `Break the task into at most ${maxPlanSteps} steps. Reply with ONLY a JSON object, no other text:`,
     '{"steps":[{"id":"s1","agent":"<agent name>","instruction":"<complete, self-contained instruction>","depends_on":[]}]}',
-    'Rules: instructions must name files and say exactly what to produce. depends_on lists ids of EARLIER steps whose results this step needs (they are passed along automatically). Steps without dependencies on each other may run in parallel. If files change, end with a reviewer step that depends on the steps that changed them. Give reading, listing and summarizing jobs to the fast agent if there is one: it answers several times faster than the others.',
+    'Rules: instructions must name files and say exactly what to produce. depends_on lists ids of EARLIER steps whose results this step needs (they are passed along automatically). Steps without dependencies on each other may run in parallel. If files change, end with a reviewer step that depends on the steps that changed them. Give reading, listing and summarizing jobs to the fast agent if there is one: it answers several times faster than the others. If several agents have the same role, spread independent steps across them by name.',
   ].join('\n');
   // The tiny helper model (0.8B) was observed taking the OVERALL task for its own step and trying to do all of it, so it only sees its step.
   const stepPrompt = (task, step, results, role) => [
@@ -447,6 +447,17 @@ function createOrchestrator(opts) {
     run,
     stop() { stopped = true; for (const r of runtime.values()) { try { r.agent.stop(); } catch { /* idle */ } } },
     onState(f) { listeners.add(f); return () => listeners.delete(f); },
+    // The owner talks to ONE agent, outside any plan (logged on the line like everything else). Returns { text, error, stopped, actions }.
+    async ask(name, text) {
+      const def = roster.agents.find((a) => a.name.toLowerCase() === String(name).toLowerCase());
+      if (!def) throw new Error(`There is no agent called ${name}. Agents: ${roster.agents.map((a) => a.name).join(', ') || 'none'}.`);
+      stopped = false;
+      let rt = runtime.get(def.name);
+      if (!rt) { rt = makeAgent(def); runtime.set(def.name, rt); }
+      rt.ledger = newLedger();
+      const rep = await line.request('owner', rt, String(text), { direct: true });
+      return { ...rep, actions: ledgerList(rt.ledger) };
+    },
     // add an agent before run() (used by the UI and tests); names must be unique
     addAgent(def) { if (roster.agents.some((a) => a.name === def.name)) throw new Error(`There is already an agent called ${def.name}.`); roster.agents.push(def); },
     agents: () => [...runtime.values()].map((r) => ({ name: r.name, role: r.role, model: r.model })),
