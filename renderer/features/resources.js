@@ -172,7 +172,8 @@ Faber.register('resources', (F) => {
       out.appendChild(ctl);
     }
 
-    sel.onchange = () => { gpuLayers = undefined; ctxSel.innerHTML = ''; run(true); };
+    advisor.sel = sel;
+    sel.onchange = () => { gpuLayers = undefined; ctxSel.innerHTML = ''; run(true); if (advisor.onPick) advisor.onPick(); };
     ctxSel.onchange = () => run(false);
     kvSel.onchange = () => run(false);
     advisor.reload = loadModels;
@@ -198,6 +199,108 @@ Faber.register('resources', (F) => {
     root.append(row, out);
   }
 
+  /* ---------- run it fast on the CPU ---------- */
+  function copyText(text, label) {
+    try { navigator.clipboard.writeText(text).then(() => F.toast(label + ' copied'), () => F.toast('Copy failed: select the text and press Ctrl+C')); } catch { F.toast('Copy failed: select the text and press Ctrl+C'); }
+  }
+  function cpuCard(root) {
+    const bar = el('div', 'rsRowWrap');
+    const show = el('button', 'primary', 'Show CPU profile');
+    const bench = el('button', '', 'Benchmark');
+    bench.title = 'Runs the model once to measure real speed (loads it into memory if needed)';
+    const tuneB = el('button', '', 'Auto-tune threads');
+    tuneB.title = 'Runs the model several times with different thread counts and keeps the fastest';
+    bar.append(show, bench, tuneB);
+    const out = el('div', 'rsOut');
+    const res = el('div', 'rsOut');
+    root.append(bar, out, res);
+    const model = () => (advisor.sel ? advisor.sel.value : '');
+    let cur = null;
+    const busy = (b) => { show.disabled = bench.disabled = tuneB.disabled = b; };
+
+    async function load() {
+      const name = model();
+      if (!name) { out.textContent = 'Pick an installed model in the advisor above first.'; return; }
+      out.innerHTML = '';
+      out.appendChild(el('div', 'rsNote', 'Looking at this PC...'));
+      let r;
+      try { r = await call('cpuProfile', name, {}); } catch (e) { out.innerHTML = ''; out.appendChild(el('div', 'rsBad', clean(e))); return; }
+      cur = r;
+      const p = r.profile;
+      out.innerHTML = '';
+      out.appendChild(el('div', 'rsNote', `CPU: ${p.cpu.model || 'unknown'}. ${p.cpu.physical} physical cores, ${p.cpu.logical} threads${p.cpu.smt ? ' (hyper-threading)' : ''}. ${p.cpu.source === 'guess' ? 'Core count is a guess: the benchmark below checks it.' : 'Detected from the system.'}`));
+      out.appendChild(el('div', 'rsHead', `${r.model}  ${[r.params, r.quant].filter(Boolean).join('  ')}`));
+      if (p.speed) out.appendChild(el('div', 'rsNote', `Expected on a typical CPU: about ${p.speed.low} to ${p.speed.high} tokens/s when writing (rough estimate from the model size; Benchmark shows the real number).`));
+      out.appendChild(el('div', 'rsVerdict ' + (p.quant.level === 'slow' ? 'warn' : p.quant.level === 'best' ? 'ok' : ''), p.quant.text));
+      for (const w of p.warnings) out.appendChild(el('div', 'rsBad', w));
+      out.appendChild(el('b', '', 'Recommended settings for this model'));
+      for (const [k, v] of Object.entries(p.options)) {
+        const row = el('div', 'rsCpuRow');
+        row.append(el('span', 'rsCpuKey', `${k} = ${v}`), el('span', 'rsNote', p.why[k] || ''));
+        out.appendChild(row);
+      }
+      const act = el('div', 'rsRowWrap');
+      const apply = el('button', 'primary', 'Apply these settings');
+      apply.onclick = () => applyProfile(r.model, p.options, false);
+      act.appendChild(apply);
+      out.appendChild(act);
+      out.appendChild(el('b', '', 'Ollama environment (set once, outside Faber)'));
+      for (const [k, v] of Object.entries(p.env)) { const row = el('div', 'rsCpuRow'); row.append(el('span', 'rsCpuKey', `${k}=${v}`), el('span', 'rsNote', p.envWhy[k] || '')); out.appendChild(row); }
+      const pre = el('pre', 'rsPre', r.envScript);
+      const cp = el('button', '', 'Copy PowerShell commands');
+      cp.onclick = () => copyText(r.envScript, 'Commands');
+      out.append(pre, cp);
+      for (const n of p.notes) out.appendChild(el('div', 'rsNote', n));
+    }
+    async function applyProfile(name, options, force) {
+      try {
+        const r = await call('setRuntime', name, options, !!force);
+        if (r.needsConfirm) {
+          F.modal({ title: 'This may freeze your PC', body: (b) => { b.appendChild(el('p', '', r.warning)); b.appendChild(el('p', 'rsNote', 'Save anyway?')); }, buttons: [{ label: 'Cancel' }, { label: 'Save anyway', primary: true, onClick: () => applyProfile(name, options, true) }] });
+          return;
+        }
+        F.toast('Saved settings for ' + name + '. They apply the next time the model loads.');
+      } catch (e) { F.error(clean(e)); }
+    }
+    const line = (r) => `${r.tokPerSec ? r.tokPerSec + ' tokens/s writing' : 'no speed'}${r.promptTokPerSec ? ', ' + r.promptTokPerSec + ' tokens/s reading the prompt' : ''}${r.loadMs ? ', load ' + (r.loadMs / 1000).toFixed(1) + 's' : ''}`;
+    show.onclick = load;
+    bench.onclick = async () => {
+      const name = model();
+      if (!name) return;
+      busy(true); res.innerHTML = ''; res.appendChild(el('div', 'rsNote', 'Measuring... this loads the model and writes a short text.'));
+      try { const r = await call('benchmark', name, {}); res.innerHTML = ''; res.appendChild(r.ok ? el('div', 'rsVerdict ok', `${name}: ${line(r)}`) : el('div', 'rsBad', r.error)); } catch (e) { res.innerHTML = ''; res.appendChild(el('div', 'rsBad', clean(e))); }
+      busy(false);
+    };
+    F.on('feat:resources:tune', (e) => {
+      if (!res.isConnected || !res.querySelector('.rsTune')) return;
+      const t = res.querySelector('.rsTune');
+      const row = el('div', 'rsCpuRow');
+      row.append(el('span', 'rsCpuKey', `${e.threads} threads`), el('span', e.result.ok ? 'rsNote' : 'rsBad', e.result.ok ? line(e.result) : e.result.error));
+      t.appendChild(row);
+      res.querySelector('.rsTuneHead').textContent = `Measuring ${e.done} of ${e.total}...`;
+    });
+    tuneB.onclick = async () => {
+      const name = model();
+      if (!name) return;
+      busy(true); res.innerHTML = '';
+      res.append(el('div', 'rsNote rsTuneHead', 'Starting... (several runs, a minute or two on a CPU)'), el('div', 'rsTune'));
+      try {
+        const r = await call('autoTune', name);
+        res.querySelector('.rsTuneHead').textContent = '';
+        if (!r.ok) res.appendChild(el('div', 'rsBad', r.error));
+        else {
+          res.appendChild(el('div', 'rsVerdict ok', `Fastest: ${r.best.threads} threads at ${r.best.tokPerSec} tokens/s (${r.gainVsWorst}% faster than the slowest setting tried).`));
+          const use = el('button', 'primary', `Use ${r.best.threads} threads for this model`);
+          use.onclick = () => applyProfile(name, { num_thread: r.best.threads }, false);
+          res.appendChild(use);
+        }
+      } catch (e) { res.querySelector('.rsTuneHead').textContent = ''; res.appendChild(el('div', 'rsBad', clean(e))); }
+      busy(false);
+    };
+    advisor.onPick = () => { out.innerHTML = ''; res.innerHTML = ''; cur = null; };
+    void cur;
+  }
+
   /* ---------- view ---------- */
   function render(el0) {
     box = el0;
@@ -212,6 +315,7 @@ Faber.register('resources', (F) => {
     loadedBox = el('div', 'rsLoadedBox');
     lo.appendChild(loadedBox);
     advisor(sec('Can this model run here?', 'Pick an installed model and a context size. Models that do not fit on the GPU can spill into system RAM (slower). Anything that does not fit in RAM either makes Windows swap to disk, which can freeze the PC.'));
+    cpuCard(sec('Run it fast on the CPU', 'Most of the speed on a CPU comes from three things: a Q4 quantization, one thread per physical core, and a small context. This shows what to set for the model chosen above and can measure the real speed on this PC.'));
     whatif(sec('What if I wanted a bigger model?', 'Check a model you do not have. Honest answer for this kind of PC: small models run well, 14B-30B models run slowly with part on the CPU, and 70B+ models (for example 80B) will not run on a laptop with 8 GB video memory and 15 GB RAM.'));
   }
   function onShow() { start(); if (advisor.reload) advisor.reload(); }

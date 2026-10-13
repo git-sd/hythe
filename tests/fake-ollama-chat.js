@@ -7,7 +7,7 @@ const http = require('http');
 
 function startFake(opts = {}) {
   const fake = {
-    requests: [], inflight: 0, maxInflight: 0, aborted: 0, port: 0, url: '',
+    requests: [], generates: [], inflight: 0, maxInflight: 0, aborted: 0, port: 0, url: '',
     models: opts.models || ['qwen3.5:9b', 'fake-b:1b', 'nothink:1b'], sizes: opts.sizes || {}, loaded: opts.loaded || [],
     script: null,
     close: () => new Promise((r) => { if (server.closeAllConnections) server.closeAllConnections(); server.close(r); }),
@@ -40,6 +40,19 @@ function startFake(opts = {}) {
     if (req.url === '/api/ps') return json(200, { models: fake.loaded || [] });
     if (req.url === '/api/show') {
       return json(200, { details: { parameter_size: '9B', quantization_level: 'Q4_K_M' }, capabilities: ['completion', 'tools', 'thinking'], parameters: '', template: '', model_info: { 'general.architecture': 'llama', 'llama.block_count': 32, 'llama.attention.head_count': 32, 'llama.attention.head_count_kv': 8, 'llama.embedding_length': 4096, 'llama.context_length': 131072 } });
+    }
+    if (req.url === '/api/generate') {
+      // speed depends on num_thread (hyper-threads hurt) so benchmarks / auto-tune have something to find
+      let g = '';
+      req.on('data', (d) => { g += d; });
+      return req.on('end', () => {
+        const b = JSON.parse(g || '{}');
+        fake.generates.push(b);
+        if (!fake.models.includes(b.model)) return json(404, { error: `model "${b.model}" not found` });
+        const t = (b.options && b.options.num_thread) || 4, n = (b.options && b.options.num_predict) || 48;
+        const speed = t <= 4 ? 2 * t : 6.4;
+        json(200, { response: 'x', done: true, load_duration: 2e9, prompt_eval_count: 30, prompt_eval_duration: 1.5e9, eval_count: n, eval_duration: (n / speed) * 1e9 });
+      });
     }
     if (req.url !== '/api/chat') return json(404, { error: 'not found' });
     let raw = '';

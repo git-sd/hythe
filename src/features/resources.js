@@ -5,6 +5,7 @@
 // Channels: feat:resources:sample advise whatif getRuntime setRuntime clearRuntime
 const { execFile } = require('child_process');
 const fit = require('./models-fit');
+const tune = require('../cpu-tune');
 
 const GB = fit.GB;
 const KEEP_RE = /^(-1|0|\d+(\.\d+)?(ms|s|m|h))$/;
@@ -153,6 +154,54 @@ module.exports = function (ctx) {
     });
   }
 
+  /* ---------- CPU optimisation (src/cpu-tune.js) ---------- */
+  let cpuCache = null;
+  function run(cmd, args) {
+    return new Promise((resolve) => execFile(cmd, args, { timeout: 6000, windowsHide: true }, (err, out) => resolve(err ? '' : String(out))));
+  }
+  // Ask the OS for the real physical core count; fall back to a guess from os.cpus().
+  async function detectCpu() {
+    if (cpuCache) return cpuCache;
+    let c = null;
+    if (process.platform === 'win32') c = tune.parseCim(await run('powershell.exe', ['-NoProfile', '-Command', 'Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores,NumberOfLogicalProcessors | ConvertTo-Json -Compress']));
+    else if (process.platform === 'linux') c = tune.parseLscpu(await run('lscpu', []));
+    cpuCache = c || tune.guessCores(os.cpus());
+    return cpuCache;
+  }
+  async function cpuProfile(name, opt = {}) {
+    const f = await modelFacts(name);
+    const [cpu, s] = await Promise.all([detectCpu(), sample()]);
+    const paramsB = parseFloat(f.params) || 0;
+    const kv = f.arch && !f.arch.approx ? fit.kvBytes(f.arch, 1, 'f16') : 0;
+    const profile = tune.cpuProfile({
+      cpu, ram: { total: s.ram.total, free: s.ram.free }, goal: opt.goal === 'auto' ? 'auto' : 'cpu', hasGpu: !!(s.gpus && s.gpus.length),
+      model: { weights: f.weights, paramsB, quant: f.quant, kvPerTokenBytes: kv },
+    });
+    return { model: name, params: f.params, quant: f.quant, weights: f.weights, profile, envScript: tune.envCommands(profile.env), saved: (ctx.featureSettings('models').runtime || {})[name] || {} };
+  }
+  let tuning = null;     // one measurement job at a time: they load the model and use every core
+  async function benchmark(name, opt = {}) {
+    if (tuning) throw new Error('A measurement is already running.');
+    tuning = true;
+    try {
+      const saved = (ctx.featureSettings('models').runtime || {})[name] || {};
+      const options = { ...saved };
+      delete options.keep_alive;
+      return await tune.benchmark({ host: host(), model: name, options: { ...options, ...(opt.options || {}) }, keepAlive: '30m', numPredict: 48 });
+    } finally { tuning = null; }
+  }
+  async function autoTune(name) {
+    if (tuning) throw new Error('A measurement is already running.');
+    tuning = true;
+    try {
+      const cpu = await detectCpu();
+      const saved = (ctx.featureSettings('models').runtime || {})[name] || {};
+      const base = { ...saved }; delete base.keep_alive; delete base.num_thread;
+      const r = await tune.autoTune({ host: host(), model: name, cpu, base, numPredict: 40, onProgress: (e) => ctx.send('feat:resources:tune', { model: name, threads: e.threads, result: e.result, done: e.done, total: e.total }) });
+      return { ...r, cpu };
+    } finally { tuning = null; }
+  }
+
   /* ---------- runtime options ---------- */
   const runtimeAll = () => ({ ...((ctx.featureSettings('models') || {}).runtime || {}) });
   function writeRuntime(name, value) {
@@ -164,6 +213,10 @@ module.exports = function (ctx) {
 
   const H = ctx.handle;
   H('feat:resources:sample', () => sample());
+  H('feat:resources:cpuInfo', () => detectCpu());
+  H('feat:resources:cpuProfile', (name, opt) => cpuProfile(name, opt || {}));
+  H('feat:resources:benchmark', (name, opt) => benchmark(name, opt || {}));
+  H('feat:resources:autoTune', (name) => autoTune(name));
   H('feat:resources:advise', (name, opt) => advise(name, opt || {}));
   H('feat:resources:whatif', (o) => whatif(o));
   H('feat:resources:getRuntime', (name) => runtimeAll()[String(name)] || {});

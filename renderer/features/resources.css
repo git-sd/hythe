@@ -36,3 +36,7 @@
 .rsCheck { display: flex; gap: 6px; align-items: center; font-size: 12px; }
 .mgMain { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .mgMain[hidden], .mgView[hidden] { display: none; }
+
+.rsCpuRow { display: flex; flex-direction: column; gap: 1px; margin: 4px 0; }
+.rsCpuKey { font-family: var(--mono); font-size: 12px; }
+.rsPre { margin: 6px 0; padding: 6px 8px; font: 11.5px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--panel2); border: 1px solid var(--border); border-radius: 4px; }
