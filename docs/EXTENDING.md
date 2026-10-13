@@ -133,7 +133,7 @@ and a fake PTY. It works on Linux and Windows and needs no display. Run: `NODE_P
 NOT covered by the harness: Electron itself (real window, zoom, native dialogs, real PowerShell PTY, GPU). Those still need the
 Electron smoke tests below, run on Windows.
 
-Electron pattern: use `tests/example-smoke.js`: an Electron script that `require`s main.js with a temp userData dir, drives
+Electron pattern: copy `tests/core-scaffold.js`: an Electron script that `require`s main.js with a temp userData dir, drives
 the renderer with `webContents.executeJavaScript`, and writes PASS/FAIL lines to a log file. Copy it to
 `tests/<yourfeature>-smoke.js` and extend it. Run it with PowerShell, tracking ONLY the process you start:
 

@@ -70,6 +70,11 @@ const KEY = 'sk-ant-api03-SECRETSECRETSECRET1234';
     check('exactly one API call', hits === 1, hits);
     await h.page.screenshot({ path: '/tmp/claude-0/claude-on.png' });
 
+    // a saved Claude model must not trigger the "model not installed, download?" card at startup
+    await h.page.reload(); await h.page.waitForFunction(() => window.Faber && !document.querySelector('#app').hidden); await sleep(1500);
+    check('after a restart, a Claude agent does not offer an Ollama download', await h.js(() => !document.querySelector('.pullBody') && Faber.chat.activeInfo().model === 'claude:claude-sonnet-5-5'));
+    check('and the chip shows the friendly name', await h.js(() => /Claude Sonnet 5\.5/.test(document.getElementById('chipModel').textContent)));
+
     // turn off from the indicator
     await h.js(() => [...document.querySelectorAll('.clInd button')].find((b) => b.textContent === 'Turn off').click()); await sleep(500);
     check('indicator gone after turning off', await h.js(() => document.querySelector('.clInd').hidden));

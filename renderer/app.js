@@ -174,6 +174,7 @@ function showPullCard(name) {
 async function checkModel() {
   const { ok, installed } = await loadModels();
   const m = activeView() ? activeView().info.model : settings.model;
+  if (String(m).startsWith('claude:')) return;   // an online model: nothing to download
   if (!ok) sys('Cannot reach Ollama. Start the Ollama app, then run /model to retry.');
   else if (!installed.includes(m)) showPullCard(m);
 }
