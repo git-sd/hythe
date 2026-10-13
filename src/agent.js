@@ -123,7 +123,7 @@ function createAgent(opts) {
   let killCmd = null;
   const changed = () => { if (onChange) { try { onChange(); } catch { /* ignore */ } } };
 
-  const offered = () => tools.schemas.filter((t) => (allowedTools ? allowedTools.includes(t.function.name) : true));
+  const offered = () => tools.schemas.filter((t) => (allowedTools ? allowedTools.includes(t.function.name) : true) && tools.offeredTo(t.function.name, id));
 
   async function* stream(body, signal) {
     const s = getSettings();

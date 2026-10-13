@@ -386,5 +386,14 @@ Faber.register('panes', (F) => {
   });
 
   // for tests and other features
-  F.panes = { state: () => ({ mode: L.mode, panes: [...L.panes], broadcast: L.broadcast }), setMode, addPane, removePane };
+  // show exactly these agents (used by team mode)
+  function show(sids, mode) {
+    const ids = new Set(chat.sessions().map((x) => x.id));
+    L.panes = sids.filter((x) => ids.has(x)).slice(0, MAX);
+    if (!L.panes.length) return;
+    L.mode = MODES.some((m) => m[0] === mode) && mode !== 'single' ? mode : (L.panes.length > 3 ? 'grid' : 'columns');
+    L.sizes = {};
+    build(); save();
+  }
+  F.panes = { state: () => ({ mode: L.mode, panes: [...L.panes], broadcast: L.broadcast }), setMode, addPane, removePane, show };
 });

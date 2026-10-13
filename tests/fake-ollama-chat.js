@@ -51,7 +51,7 @@ function startFake(opts = {}) {
       if (/^nothink/.test(body.model) && body.think !== undefined) return json(400, { error: `"${body.model}" does not support thinking` });
       const user = [...body.messages].reverse().find((m) => m.role === 'user');
       if (user && /\[err\]\s*$/.test(user.content)) return json(500, { error: 'boom from fake' });
-      const out = await (fake.script || defaultScript)(body, rec);
+      const out = (await (fake.script || defaultScript)(body, rec)) || { content: 'ok' };
       if (body.stream === false) return json(200, { model: body.model, message: { role: 'assistant', content: 'SUMMARY: fake summary' }, done: true, done_reason: 'stop' });
       fake.inflight++;
       fake.maxInflight = Math.max(fake.maxInflight, fake.inflight);

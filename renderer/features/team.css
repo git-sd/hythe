@@ -1,0 +1,44 @@
+/* team feature: flat, solid colours, theme variables only */
+.tm { overflow: auto; padding: 8px; font-size: 13px; }
+.tmSetup, .tmRun { display: flex; flex-direction: column; gap: 8px; }
+.tmRun[hidden], .tmSetup[hidden] { display: none; }
+.tmHint { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.tmBad { color: var(--bad); font-size: 12px; overflow-wrap: anywhere; }
+.tmTask { width: 100%; resize: vertical; min-height: 70px; }
+.tmMembers { display: flex; flex-direction: column; gap: 4px; }
+.tmMember { display: grid; grid-template-columns: 1fr 100px 22px; gap: 4px; align-items: center; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.tmMember input:nth-child(3) { grid-column: 1 / -1; grid-row: 2; }
+.tmMember button { grid-column: 3; grid-row: 1; }
+.tmMember input, .tmMember select { min-width: 0; width: 100%; }
+.tmOpts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.tmOpt { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+.tmOpt input, .tmOpt select { width: 100%; }
+.tmStatus { font-weight: 600; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel2); }
+.tmStatus.running, .tmStatus.planning { border-color: var(--accent); }
+.tmStatus.done { border-color: var(--ok); }
+.tmStatus.error, .tmStatus.limit { border-color: var(--bad); }
+.tmTaskText { color: var(--muted); font-size: 12px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.tmBtns { display: flex; gap: 6px; flex-wrap: wrap; }
+.tmBtns button { padding: 3px 9px; font-size: 12px; }
+.tmBtns button.on { border-color: var(--accent); }
+.tmLive { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.tmRole, .tmMemSt, .tmOwnerTag { color: var(--muted); font-size: 11.5px; }
+.tmLive button { margin-left: auto; padding: 1px 8px; font-size: 11.5px; }
+.tmLast { flex-basis: 100%; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.tmSec { border-top: 1px solid var(--border); }
+.tmSec > summary { cursor: pointer; padding: 6px 0; font-weight: 600; }
+.tmBody { display: flex; flex-direction: column; gap: 4px; padding-bottom: 6px; max-height: 260px; overflow: auto; }
+.tmSummary { white-space: pre-wrap; overflow-wrap: anywhere; }
+.tmTaskRow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tmTaskTitle { flex: 1; min-width: 80px; overflow-wrap: anywhere; }
+.tmChip { font-size: 11px; padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); }
+.tmChip.doing { color: var(--text); border-color: var(--accent); }
+.tmChip.done { color: var(--ok); border-color: var(--ok); }
+.tmChip.blocked { color: var(--bad); border-color: var(--bad); }
+.tmClaim { display: flex; align-items: center; gap: 6px; }
+.tmPath { flex: 1; min-width: 0; overflow-wrap: anywhere; font-family: var(--mono); font-size: 12px; }
+.tmClaim button { padding: 0 8px; font-size: 11.5px; }
+.tmNote { overflow-wrap: anywhere; font-size: 12.5px; }
+.tmForm { display: flex; gap: 4px; padding: 4px 0 8px; }
+.tmForm input { flex: 1; min-width: 0; }
+.tmForm select { max-width: 90px; }
