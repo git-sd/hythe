@@ -1,0 +1,30 @@
+/* trace panel: flat, solid colours, theme variables only */
+.trPanel { display: flex; flex-direction: column; background: var(--bg); min-height: 0; font-size: 12.5px; }
+.trBar { flex: none; display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.trBar button, .trBar select { padding: 2px 8px; font-size: 12px; }
+.trChips { display: flex; gap: 3px; }
+.trChip { color: var(--muted); }
+.trChip.on { color: var(--text); border-color: var(--accent); }
+.trFollow { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; }
+.trStatus { flex: none; padding: 3px 10px; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--border); }
+.trStatus.ok { color: var(--ok); }
+.trStatus.bad { color: var(--bad); }
+.trList { flex: 1; min-height: 0; overflow: auto; padding: 4px 0; }
+.trEmpty { color: var(--muted); padding: 16px; }
+.trEntry { padding: 3px 10px 5px; border-left: 3px solid var(--border); margin: 2px 0; }
+.trHead { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; font-family: var(--mono); font-size: 11.5px; }
+.trSeq, .trTime, .trMs { color: var(--muted); }
+.trKind { font-weight: 600; }
+.trWho { color: var(--text); }
+.trModel { color: var(--accent); }
+.trBody { margin: 2px 0 0; padding: 0 0 0 4px; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.45 var(--mono); color: #cfcfd6; }
+.trMore { padding: 0 6px; font-size: 11.5px; }
+.k-task { border-left-color: var(--accent); }
+.k-result, .k-final { border-left-color: var(--ok); }
+.k-error { border-left-color: var(--bad); }
+.k-error .trKind { color: var(--bad); }
+.k-question, .k-answer { border-left-color: #f59e0b; }
+.k-plan { border-left-color: var(--accent); background: var(--panel2); }
+.k-board { border-left-color: #60a5fa; }
+.k-tool, .k-tool-result, .k-usage, .k-thought, .k-system { color: var(--muted); }
+.k-tool .trBody, .k-tool-result .trBody, .k-usage .trBody, .k-thought .trBody, .k-system .trBody { color: var(--muted); }

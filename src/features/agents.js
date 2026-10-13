@@ -3,6 +3,7 @@
 module.exports = function (ctx) {
   const { fs, path } = ctx;
   const agentMod = require('../agent');
+  const bus = require('../bus');
   const { createAgent, runSubAgent, repairConv, debugEmit } = agentMod;
 
   const DIR = path.join(ctx.dataDir, 'agents');
@@ -81,12 +82,15 @@ module.exports = function (ctx) {
       created: p.created || Date.now(), updated: p.updated || Date.now(),
       status: 'idle', preview: p.preview || '', log: p.log || [], pending: new Map(),
       running: false, waiting: false, errored: false, dirty: true, cur: '', lastText: '',
+      // set by team mode: a restricted tool list, extra instructions and the team this agent belongs to
+      allowedTools: Array.isArray(p.allowedTools) ? p.allowedTools : null, teamSystem: String(p.teamSystem || ''), team: String(p.team || ''),
     };
     if (!EFFORTS.includes(s.effort)) s.effort = 'medium';
     if (!MODES.includes(s.mode)) s.mode = 'ask';
     s.agent = createAgent({
       id: s.id, conv: p.conv ? repairConv(p.conv) : [],
-      getSettings: () => ({ ...ctx.effective(), model: s.model, effort: s.effort, mode: s.mode }),
+      getSettings: () => { const g = ctx.effective(); return { ...g, model: s.model, effort: s.effort, mode: s.mode, extraSystem: [g.extraSystem, s.teamSystem].filter(Boolean).join('\n') }; },
+      allowedTools: s.allowedTools,
       approve: makeApprove(s), emit: (ev) => emitFor(s, ev), gate,
       onChange: () => touch(s),
     });
@@ -96,7 +100,7 @@ module.exports = function (ctx) {
 
   const info = (s) => ({
     id: s.id, name: s.name, model: s.model, effort: s.effort, mode: s.mode, status: s.status,
-    preview: s.preview, created: s.created, updated: s.updated, messages: s.agent.transcript().length,
+    preview: s.preview, created: s.created, updated: s.updated, messages: s.agent.transcript().length, team: s.team,
   });
   const listInfo = () => [...sessions.values()].map(info);
   const pushList = () => ctx.send('feat:agents:event', { type: 'sessions', sessions: listInfo(), active });
@@ -121,7 +125,7 @@ module.exports = function (ctx) {
 
   /* ---------- events: log them (for restoring the chat) and forward them ---------- */
   function record(s, ev) {
-    if (ev.type === 'file_changed' || ev.type === 'tool_output') return;
+    if (ev.type === 'file_changed' || ev.type === 'tool_output' || ev.type === 'usage') return;
     const last = s.log[s.log.length - 1];
     if ((ev.type === 'token' || ev.type === 'thinking') && last && last.type === ev.type && last.sub === ev.sub) {
       last.text += ev.text;
@@ -134,6 +138,7 @@ module.exports = function (ctx) {
   function emitFor(s, ev) {
     record(s, ev);
     ctx.send('feat:agents:event', ev);
+    bus.emit('agent-event', { session: s.id, name: s.name, model: s.model, ev });
     if (ev.sub) return;
     if (ev.type === 'token') s.cur += ev.text;
     if (ev.type === 'turn_end' || ev.type === 'tool_start' || ev.type === 'done' || ev.type === 'error') {
@@ -195,7 +200,7 @@ module.exports = function (ctx) {
         writeJson(path.join(DIR, s.id + '.json'), { conv: s.agent.transcript(), log: s.log });
         s.dirty = false;
       }
-      const meta = [...sessions.values()].map((s) => ({ id: s.id, name: s.name, model: s.model, effort: s.effort, mode: s.mode, created: s.created, updated: s.updated, preview: s.preview }));
+      const meta = [...sessions.values()].map((s) => ({ id: s.id, name: s.name, model: s.model, effort: s.effort, mode: s.mode, created: s.created, updated: s.updated, preview: s.preview, allowedTools: s.allowedTools, teamSystem: s.teamSystem, team: s.team }));
       writeJson(path.join(DIR, 'index.json'), { version: 1, active, seq, sessions: meta });
     } catch (e) { console.error('agents: could not save', e.message); }
   }
@@ -270,7 +275,7 @@ module.exports = function (ctx) {
     return true;
   });
   const flushSoon = () => { if (!saveTimer && cfg().persist) saveTimer = setTimeout(flush, 1500); };
-  H('feat:agents:close', (sid) => {
+  function closeSession(sid) {
     const s = need(sid);
     stopSession(s);
     const ids = [...sessions.keys()];
@@ -282,10 +287,12 @@ module.exports = function (ctx) {
     flushSoon();
     pushList();
     return { active };
-  });
+  }
+  H('feat:agents:close', (sid) => closeSession(sid));
 
-  H('feat:agents:send', (sid, text) => {
-    const s = need(sid);
+  // Runs one message through a session. Resolves to the agent's result ({ text, error, stopped, ... }).
+  // announce: also show the message in the renderer (used when it did not come from that agent's own input box).
+  function runSession(s, text, announce) {
     text = String(text || '').trim();
     if (!text) throw new Error('Empty message.');
     if (s.running) throw new Error('This agent is already working. Stop it first.');
@@ -293,16 +300,16 @@ module.exports = function (ctx) {
     s.errored = false;
     s.cur = '';
     s.preview = oneLine(text);
-    record(s, { type: 'user', text });
+    if (announce) emitFor(s, { type: 'user', text }); else record(s, { type: 'user', text });
     refresh(s);
-    s.agent.send(text).catch((e) => emitFor(s, { type: 'error', message: e.message })).finally(() => {
+    return s.agent.send(text).catch((e) => { emitFor(s, { type: 'error', message: e.message }); return { text: '', error: e.message }; }).finally(() => {
       s.running = false;
       refresh(s);
       touch(s);
       pushList();
     });
-    return { ok: true };
-  });
+  }
+  H('feat:agents:send', (sid, text) => { runSession(need(sid), text, false); return { ok: true }; });
   H('feat:agents:stop', (sid) => { stopSession(need(sid)); return true; });
   H('feat:agents:stopAll', () => { for (const s of sessions.values()) stopSession(s); return true; });
   H('feat:agents:approve', (sid, id, ok) => answer(need(sid), String(id), !!ok));
@@ -348,6 +355,17 @@ module.exports = function (ctx) {
       }, ['role', 'task']),
     (args, tctx) => runSubAgent(tctx, args, { maxSteps: cfg().subSteps, timeoutSec: cfg().subTimeoutSec }),
   );
+
+  // for team mode (src/features/team.js)
+  bus.agents = {
+    create: (p) => { const s = newSession(p || {}); touch(s); pushList(); return info(s); },
+    run: (sid, text) => runSession(need(sid), text, true),
+    stop: (sid) => { const s = sessions.get(String(sid)); if (s) stopSession(s); },
+    close: (sid) => { if (sessions.has(String(sid))) closeSession(sid); },
+    has: (sid) => sessions.has(String(sid)),
+    info: (sid) => (sessions.has(String(sid)) ? info(sessions.get(String(sid))) : null),
+    busy: (sid) => { const s = sessions.get(String(sid)); return !!(s && s.running); },
+  };
 
   load();
   ctx.app.on('before-quit', flush);

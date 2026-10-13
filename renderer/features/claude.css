@@ -1,0 +1,15 @@
+/* claude (online) feature. Flat, solid colours only. The warning colour is local to this feature. */
+.clInd, .clWarn { --cl-warn: #f59e0b; --cl-warn-text: #1a1200; }
+.clWarn { background: var(--cl-warn); color: var(--cl-warn-text); padding: 8px 10px; border-radius: 4px; margin-bottom: 10px; font-size: 13px; }
+.clBox { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; font-size: 13px; max-width: 560px; }
+.clRow { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; width: 100%; }
+.clRow input[type=password], .clRow input[type=text] { flex: 1; min-width: 220px; }
+.clHint { color: var(--muted); font-size: 12px; }
+.clOk { color: var(--ok); font-size: 12px; }
+.clBad { color: var(--bad); font-size: 12px; }
+.clList { margin: 4px 0 4px 18px; padding: 0; }
+.clInd { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
+.clInd button { padding: 2px 8px; font-size: 12px; }
+.clInd.use .clTxt { background: var(--cl-warn); color: var(--cl-warn-text); font-weight: 600; border-color: var(--cl-warn); }
+.clInd.idle .clTxt { background: transparent; color: var(--cl-warn); border-color: var(--cl-warn); }
+.mBadge.online { background: #f59e0b; color: #1a1200; }

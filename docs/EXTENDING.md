@@ -19,8 +19,10 @@ features IN PARALLEL, so everyone works in their OWN files and plugs in through 
     renderer/faber.js       the extension API (below)
     renderer/features/<name>.js + .css   renderer part of a feature  Faber.register(name, (F) => {...})
 
-Feature names (files already exist as stubs, replace them): `ui-settings`, `background`, `agents`, `debug`,
-`models`, `git`, `remote`, `plugins`.
+Feature names: `ui-settings`, `background`, `agents`, `debug`, `models`, `git`, `remote`, `plugins`, `claude`
+(optional online provider), `resources` (Models > Resources), `panes` (split chats), `team` (team mode).
+Core (not features): `renderer/dock.js` (layout engine), `renderer/editor.js` (editor groups), `renderer/layout.js` (saves layouts),
+`src/claude.js` (Anthropic API client), `src/team-lib.js` (team board), `src/bus.js` (features talking to features).
 
 ## Renderer API: `Faber` (see renderer/faber.js, ~150 lines, read it)
 
@@ -54,6 +56,75 @@ Feature names (files already exist as stubs, replace them): `ui-settings`, `back
 
 The loader calls your module once. If it throws, only your feature is disabled.
 
+## Layout: dock, editor groups, panes (renderer)
+
+The main area is a tree of panels managed by `Dock` (renderer/dock.js). Panels are real DOM elements that sit in `#dockPark`
+while hidden. Every panel is registered with `Dock.register({ id, title, el, onClose })`: `chat` (the `#chatPanel` element,
+always visible), `terminal` (`#term`), and one `editorN` per editor group.
+
+    Dock.show(id[, {near, zone, ratio}])  Dock.hide(id)  Dock.toggle(id)  Dock.visible(id)  Dock.move(id, nearId, zone)
+    Dock.reset()  Dock.serialize()  Dock.restore(tree)  Dock.onChange(fn)  Dock.title(id, text)
+
+The user drags a panel's tab onto an edge (dock) or the middle (stack). `layout.js` persists the tree in `features.dock`.
+Never hard-code positions of chat / editor / terminal: they move. Use ids (`$('edText')` is always the ACTIVE editor's text area).
+
+Editor groups (`Editors`, renderer/editor.js): documents are shared between groups. The globals `tabs` / `activeTab` and the legacy ids
+(`#editor #edText #tabs #edGutter ...`) always point at the active group, so code that edits "the editor" keeps working. Editor DOM
+is styled by CLASS (`.edText .edHl .edGutter .edTabs ...`), never by id.
+
+Split chat (`F.panes`, renderer/features/panes.js): `F.panes.show(sids, mode)`. Chat views are moved into pane bodies; a view's
+scroll container is `view.scroller` (null in single mode). Streaming text is painted at most once per animation frame (`queuePaint`).
+
+`Faber.chat` (app.js) also offers `views() view(sid) sendTo(sid, text) setBroadcast(fn) runCommand(line) openMenu(...)`. The event
+`Faber.emit('agent-event', { view, ev })` fires for every agent event. Models tab views: `F.modelsViews.push({ id, title, render(el), onShow, onHide })`.
+
+## Team mode and tools (main process)
+
+Members are normal agent sessions created through `src/bus.js` (`bus.agents.create/run/stop/close`, filled by agents.js). Team tools
+(`board_*`, `claim_files`, `finish_work`) are registered with `ctx.tools.registerTool(schema, impl, { when: (sessionId) => bool })`:
+a tool with `when` is only offered to agents for which it returns true. `ctx.tools.setWriteGuard((absPath, toolCtx) => {})` lets a
+feature veto `write_file` / `edit_file` (team file claims); it does NOT cover `run_command`. A session can have a restricted tool list
+(`allowedTools`) and extra system text (`teamSystem`).
+
+## Multi-agent orchestration, the communication line, CPU tuning
+
+- `src/comms.js`: THE communication line. Anything that makes agents talk (orchestrator, team mode, future features) must do it
+  through `line.request(from, {name, model, run}, text)` (logs the task, runs the agent, logs the reply or error) and log other
+  traffic with `line.log({from, to, kind, text})`. `agentEventLogger(line, def)` turns an agent's event stream into entries (reasoning,
+  tool calls with arguments, tool results, tokens). Entries are hash-chained (`verify()`), kept in memory, in a JSONL file and
+  shown live in the Trace dock panel. `comms.shared()` is the one line per process. Never add a side channel between agents.
+- `src/orchestrator.js`: conductor -> JSON plan -> steps on specialist agents (each its own model) -> reviewer verdict + rework -> final
+  answer. Plain Node (no Electron): the same code runs in the app (`src/features/orchestra.js`) and from `tools/orchestra-cli.js`.
+  Agents take turns per agent; `concurrency` (default 1, the right value for a CPU) bounds how many models run at once.
+  Rules learned from REAL small models (see docs/REAL-MODEL-RESULTS.md), each visible in the trace when it fires:
+  the conductor has no tools and gets a project listing in its prompt (a tool call during planning swallowed the JSON plan);
+  a step that starts with a change/run verb but names a read-only agent is moved to the coder; the tiny fast model only sees its own
+  step, not the whole task; after the steps ran, any step whose tools really wrote files and has no reviewer step after it gets one
+  (`autoReview`, on by default); every step records what its tools REALLY did (`step.actions`) and the conductor is told to flag
+  report claims that the tool list does not show.
+- `src/orchestrator-chat.js`: TALKING to the orchestrator ("I want 4 agents", "add a reviewer", "use qwen3.5:4b for the coders", "build a
+  snake game"). Team commands are understood by RULES (instant, offline, unit-tested on many phrasings: `parseIntent`), not by a model;
+  anything that is not a team command is a task and goes to the conductor. It keeps the team (agents are `{name, role, model, focus?}`;
+  kinds such as tester/writer are a coder with a specialty `focus`), says what it understood, and supports `undo`. Long work (a run, a
+  direct "ask coder1 ...") runs in the background so "stop" always works. Every message in both directions goes through `onMessage`; the
+  app logs them on the communication line (owner <-> orchestrator, `meta.chat`). Used by the Orchestra tab (`src/features/orchestra.js`,
+  channels `chat-state`, `chat-send`, `chat-reset`, event `chat`) and by `tools/orchestra-cli.js chat`. The team and the last 40 messages are
+  saved in the feature settings. To teach it a new phrase, add a case to `tests/orchestrator-chat-unit.js` first.
+- `src/model-roster.js`: role -> model from what is installed (code specialist, smallest tool-capable model as the speed helper,
+  a reviewer different from the coder), with optional download SUGGESTIONS (never installed automatically).
+- `src/cpu-tune.js`: core detection, profile (threads, context, mmap, keep_alive, Ollama env vars), quantization advice, `benchmark()`
+  and `autoTune()` against Ollama, `maxLoadedModels()` (how many roster models fit in RAM together). Estimates are labelled estimates;
+  the benchmark measures the real speed. Advice must follow measurements, not folklore: on a CPU with VNNI/AMX, Q8_0 measured FASTER
+  than Q4_K_M, and a quantized KV cache measured SLOWER (it only saves memory), so both rules are feature- and RAM-dependent.
+- `src/agent.js` retries a request once when Ollama's model runner died before answering ("signal: killed", "unexpected EOF"), and says so.
+- Command line: `node tools/orchestra-cli.js run "<task>" | roster | tune --model M [--autotune] | bench --models a,b | chat | verify <trace.jsonl> | demo`.
+
+## Online provider (Claude)
+
+`src/claude.js` maps `claude:<model-id>` models to the Anthropic Messages API (streaming, tool use, thinking blocks replayed with
+their signatures). Rules: opt-in, never the default, key only via `safeStorage`, never sent to the renderer, a persistent ONLINE
+indicator while on, and it is switched off at every start. Plain `fetch` is used on purpose (no new npm dependency).
+
 ## Rules for everyone
 
 1. OFFLINE FIRST. The renderer is locked to local resources (CSP + request blocking). Never add a CDN, web font, or
@@ -79,7 +150,29 @@ The loader calls your module once. If it throws, only your feature is disabled.
 
 ## Testing (required: prove it works in the REAL app, not just syntax)
 
-Use the pattern in `tests/example-smoke.js`: an Electron script that `require`s main.js with a temp userData dir, drives
+FIRST CHOICE for anything that is not Electron itself: the browser harness. `tests/web/harness.js` runs the REAL renderer in
+Chromium (Playwright) against the REAL main.js and features, with a stand-in for Electron (windows, IPC, dialogs, safeStorage)
+and a fake PTY. It works on Linux and Windows and needs no display. Run: `NODE_PATH=$(npm root -g) node tests/web/<name>.js`
+(it needs the `playwright` package and its Chromium; it is not a project dependency). One launch() per process. Tests:
+
+    tests/web/boot-smoke.js       boots, visits every tab and settings section, no page errors
+    tests/web/features-smoke.js   agents, git, models, plugins, debug through IPC
+    tests/web/editor-regress.js   ports of editor-live / editor-crlf / editor-reload (run after touching editor.js)
+    tests/web/layout-regress.js   port of layout-scroll-smoke (the page never scrolls)
+    tests/web/dock-gui.js         drag to dock, stacking, editor groups, save/restore layouts
+    tests/web/panes-gui.js  team-gui.js  team-main.js  claude-gui.js  resources-gui.js
+    tests/web/orchestra-gui.js    Orchestra tab (task form) + Trace panel: four models, filters, verify, export, approvals, stop
+    tests/web/orchestra-chat-gui.js  talk to the orchestrator: create/replace/add/remove agents, undo, a task with the team, stop, ask one agent
+    tests/web/orchestra-chat-restore.js  the saved team and conversation come back after a restart
+    tests/claude-unit.js  team-unit.js  resources-unit.js  comms-unit.js  cpu-tune-unit.js  orchestrator-unit.js  orchestrator-chat-unit.js  cli-unit.js
+                                  plain Node, no browser. fake-models.js = four scripted models behind one fake Ollama.
+    tests/orchestration-demo.js   prints a full multi-agent trace to the console (node tests/orchestration-demo.js)
+    tests/web/run-all.js          runs everything above, one process per file
+
+NOT covered by the harness: Electron itself (real window, zoom, native dialogs, real PowerShell PTY, GPU). Those still need the
+Electron smoke tests below, run on Windows.
+
+Electron pattern: copy `tests/core-scaffold.js`: an Electron script that `require`s main.js with a temp userData dir, drives
 the renderer with `webContents.executeJavaScript`, and writes PASS/FAIL lines to a log file. Copy it to
 `tests/<yourfeature>-smoke.js` and extend it. Run it with PowerShell, tracking ONLY the process you start:
 

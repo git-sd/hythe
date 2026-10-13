@@ -151,6 +151,7 @@ Faber.register('agents', (F) => {
       const was = last[s.id];
       last[s.id] = s.status;
       if (!was || was === s.status || s.id === chat.active()) continue;
+      if (F.panes && F.panes.state().panes.includes(s.id)) continue;   // visible in a split pane already
       if (s.status === 'approval') F.toast(`${s.name} needs your approval`);
       else if (was === 'working' && s.status === 'idle') F.toast(`${s.name} finished`);
       else if (s.status === 'error') F.toast(`${s.name} hit an error`);

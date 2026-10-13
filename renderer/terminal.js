@@ -111,13 +111,17 @@ function closeTerminal(id) {
 
 // Pure show/hide. Never creates a terminal (newTerminal calls this, so it must not call back).
 function setTermVisible(show) {
-  $('term').hidden = !show;
+  if (show) Dock.show('terminal'); else Dock.hide('terminal');
   $('termBtn').style.color = show ? 'var(--accent)' : '';
+  if (show) requestAnimationFrame(() => fitTerm(activeTerm));
 }
+// the terminal is a dock panel: it can be dragged next to or under any other panel
+Dock.register({ id: 'terminal', title: 'Terminal', el: $('term'), onClose: () => showTerm(false) });
+Dock.onChange(() => { $('termBtn').style.color = Dock.visible('terminal') ? 'var(--accent)' : ''; fitTerm(activeTerm); });
 
 // Toggle button / Ctrl+`: show the panel, creating the first terminal if there is none.
 function showTerm(force) {
-  const show = force ?? $('term').hidden;
+  const show = force ?? !Dock.visible('terminal');
   setTermVisible(show);
   if (!show) return;
   if (!Object.keys(terms).length) { newTerminal(); return; }

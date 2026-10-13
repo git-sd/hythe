@@ -90,6 +90,7 @@ const impl = {
 
   async write_file(a, ctx) {
     const abs = resolvePath(ctx, a.path);
+    if (writeGuard) writeGuard(abs, ctx);
     const exists = fs.existsSync(abs);
     const preview = String(a.content).split('\n').slice(0, 30).join('\n');
     if (!(await ctx.approve('edit', `${exists ? 'Overwrite' : 'Create'} ${abs}`, preview))) throw new Error('User denied this action.');
@@ -101,6 +102,7 @@ const impl = {
 
   async edit_file(a, ctx) {
     const abs = resolvePath(ctx, a.path);
+    if (writeGuard) writeGuard(abs, ctx);
     const text = fs.readFileSync(abs, 'utf8');
     const count = text.split(a.old_string).length - 1;
     if (count === 0) throw new Error('old_string not found. Re-read the file and match it exactly.');
@@ -151,9 +153,17 @@ async function execute(name, args, ctx) {
 }
 
 // Lets features add AI tools. schema = fn(...) result; impl = async (args, ctx) => string.
-function registerTool(schema, toolImpl) {
+// opts.when(sessionId) -> bool decides per agent whether the tool is offered at all (e.g. team tools only for team members).
+const guards = {};
+function registerTool(schema, toolImpl, opts = {}) {
   schemas.push(schema);
   impl[schema.function.name] = toolImpl;
+  if (opts.when) guards[schema.function.name] = opts.when;
 }
+const offeredTo = (name, sessionId) => !guards[name] || !!guards[name](sessionId);
 
-module.exports = { schemas, execute, runShell, killTree, registerTool, helpers: { fn, str, num } };
+// A feature (team mode) can veto file changes: fn(absPath, toolCtx) throws to refuse. Commands run by run_command are not covered.
+let writeGuard = null;
+const setWriteGuard = (fn) => { writeGuard = typeof fn === 'function' ? fn : null; };
+
+module.exports = { schemas, execute, runShell, killTree, registerTool, offeredTo, setWriteGuard, helpers: { fn, str, num } };

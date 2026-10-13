@@ -18,8 +18,8 @@ body { font-size: var(--ui-fs); }
 button.primary { color: var(--on-accent); }
 #tree .row { color: var(--tree-text); height: var(--row-h); }
 #tree .row.sel { color: var(--text); }
-#edGutter { color: var(--gutter); }
-#edText::selection { background: var(--ed-sel); }
+.edGutter { color: var(--gutter); }
+.edText::selection { background: var(--ed-sel); }
 .tk-c { color: var(--tk-c); } .tk-s { color: var(--tk-s); } .tk-n { color: var(--tk-n); } .tk-k { color: var(--tk-k); }
 
 /* ---- UI font size: the fixed-size bits follow the base size (defaults equal the core values) ---- */
@@ -27,7 +27,7 @@ button.primary { color: var(--on-accent); }
 .chip, #scopeNote, .sideFoot, .stab, .small, .sideTitle { font-size: calc(var(--ui-fs) - 2px); }
 .msg.sys { font-size: calc(var(--ui-fs) - 1px); }
 .tab { font-size: calc(var(--ui-fs) - 1px); height: var(--tab-h); }
-#tabs { min-height: var(--tab-h); }
+.edTabs { min-height: var(--tab-h); }
 .ttab { font-size: calc(var(--ui-fs) - 1.5px); height: var(--ttab-h); }
 .termBar { min-height: var(--ttab-h); }
 .tool .hd { font-size: calc(var(--ui-fs) - 1.5px); }
@@ -61,12 +61,12 @@ html[data-rail="right"] .rbtn.on { border-right-color: var(--accent); }
 .uisWin h3 { margin: 18px 0 0; font-size: var(--ui-fs); color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .4px; }
 
 /* ---- editor ---- */
-#edBody { font-size: var(--ed-font-size); line-height: var(--ed-lh); }
-#edHl, #edText { tab-size: var(--ed-tab); }
-html.uis-no-ln #edGutter { display: none; }
-html.uis-wrap #edHl, html.uis-wrap #edText { white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; }
-html.uis-wrap #edText { overflow-x: hidden; overflow-y: scroll; }
-html.uis-wrap #edHl { padding-right: 22px; }
+.edBody { font-size: var(--ed-font-size); line-height: var(--ed-lh); }
+.edHl, .edText { tab-size: var(--ed-tab); }
+html.uis-no-ln .edGutter { display: none; }
+html.uis-wrap .edHl, html.uis-wrap .edText { white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; }
+html.uis-wrap .edText { overflow-x: hidden; overflow-y: scroll; }
+html.uis-wrap .edHl { padding-right: 22px; }
 #edMeasure { position: absolute; left: 0; top: 0; visibility: hidden; pointer-events: none; padding: 0 12px; white-space: pre-wrap; overflow-wrap: break-word; font: inherit; tab-size: var(--ed-tab); }
 
 /* ---- settings window ---- */

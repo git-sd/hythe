@@ -2,6 +2,7 @@
 // createAgent() is cheap and independent: every chat session (and every sub-agent) has its own instance.
 const os = require('os');
 const tools = require('./tools');
+const claude = require('./claude');
 
 const MAX_STEPS = 30;
 const EFFORT = {
@@ -59,6 +60,8 @@ function applyRuntime(body, s) {
   if (rt.keep_alive !== undefined && rt.keep_alive !== null && rt.keep_alive !== '') body.keep_alive = rt.keep_alive;
 }
 
+// Claude-only fields (raw blocks with thinking signatures) must not be sent to Ollama.
+const plain = (m) => { if (!m.claude) return m; const { claude: _c, claudeModel: _m, ...rest } = m; return rest; };
 const rid = () => Math.random().toString(36).slice(2);
 const abortError = () => Object.assign(new Error('aborted'), { name: 'AbortError' });
 
@@ -120,16 +123,19 @@ function createAgent(opts) {
   let killCmd = null;
   const changed = () => { if (onChange) { try { onChange(); } catch { /* ignore */ } } };
 
-  const offered = () => tools.schemas.filter((t) => (allowedTools ? allowedTools.includes(t.function.name) : true));
+  const offered = () => tools.schemas.filter((t) => (allowedTools ? allowedTools.includes(t.function.name) : true) && tools.offeredTo(t.function.name, id));
+
+  const runnerDied = (e) => e.slowLoad || ((e.status === 500 || !e.status) && /terminated|signal: killed|unexpected EOF/i.test(`${e.body || ''} ${e.message || ''}`));
 
   async function* stream(body, signal) {
     const s = getSettings();
+    if (claude.isClaude(body.model)) { yield* claude.stream(body, signal, s); return; }
     let res;
     try {
       res = await fetch(`${s.host}/api/chat`, { method: 'POST', body: JSON.stringify(body), signal, headers: { 'Content-Type': 'application/json' } });
     } catch (e) {
       if (e.name === 'AbortError') throw e;
-      throw new Error(`Cannot reach Ollama at ${s.host}. Start it (open the Ollama app or run "ollama serve").`);
+      throw fetchFailure(e, s.host);
     }
     if (!res.ok) {
       const t = await res.text();
@@ -159,14 +165,14 @@ function createAgent(opts) {
     const list = s.hasFolder ? offered() : [];
     const body = {
       model: s.model,
-      messages: [{ role: 'system', content: systemPrompt(s, role, depth === 0 && !allowedTools && list.some((t) => t.function.name === 'delegate_task')) }, ...conv],
+      messages: [{ role: 'system', content: systemPrompt(s, role, depth === 0 && !allowedTools && list.some((t) => t.function.name === 'delegate_task')) }, ...(claude.isClaude(s.model) ? conv : conv.map(plain))],
       tools: list.length ? list : undefined,
       stream: true,
       think: eff.think,
       options: { temperature: eff.temperature, num_predict: eff.num_predict, num_ctx: s.numCtx || 16384 },
     };
     applyRuntime(body, s);
-    let content = '', thinking = '';
+    let content = '', thinking = '', raw = null;
     const calls = [];
     let final = null;
     const t0 = Date.now();
@@ -187,6 +193,7 @@ function createAgent(opts) {
           if (m.thinking) { thinking += m.thinking; emit({ type: 'thinking', text: m.thinking }); }
           if (m.content) { content += m.content; emit({ type: 'token', text: m.content }); }
           if (m.tool_calls) calls.push(...m.tool_calls);
+          if (m.raw) raw = { claude: m.raw, claudeModel: m.rawModel };
           if (part.done) final = part;
         }
       } finally { if (release) release(); }
@@ -194,7 +201,15 @@ function createAgent(opts) {
     logRequest();
     try { await run(); } catch (e) {
       // Model without thinking support: retry once without the flag.
-      if (e.status === 400 && /think/i.test(e.body || '')) { delete body.think; logRequest('without think'); await run(); } else throw e;
+      if (!claude.isClaude(body.model) && e.status === 400 && /think/i.test(e.body || '')) { delete body.think; logRequest('without think'); await run(); }
+      // Ollama's model runner died before answering (seen on a 16 GB PC with several models loaded: "signal: killed", "unexpected EOF").
+      // The next request starts a fresh runner, so try once more, and say so.
+      else if (!claude.isClaude(body.model) && runnerDied(e) && !content && !thinking && !calls.length && !signal.aborted) {
+        emit({ type: 'notice', text: e.slowLoad ? `Ollama did not answer within 5 minutes (a big model loading from a slow disk?). Trying this request once more; what was already read is cached.` : `Ollama's model runner stopped (${String(e.body || e.message).slice(0, 160)}). Starting it again and retrying this request once.` });
+        logRequest('runner restarted');
+        await new Promise((r) => setTimeout(r, e.slowLoad ? 0 : 2000));
+        await run();
+      } else throw e;
     }
     if (debugSink) {
       const f = final || {};
@@ -209,7 +224,12 @@ function createAgent(opts) {
         contentChars: content.length, thinkingChars: thinking.length, toolCalls: calls.length, wallMs: Date.now() - t0,
       });
     }
-    return { content, calls };
+    if (final) {
+      const ns = final.eval_duration || 0;
+      emit({ type: 'usage', model: body.model, prompt: final.prompt_eval_count || 0, eval: final.eval_count || 0, tps: ns && final.eval_count ? Math.round((final.eval_count / (ns / 1e9)) * 10) / 10 : null, ms: Date.now() - t0 });
+    }
+    if (final && final.done_reason === 'length') emit({ type: 'notice', text: 'The reply was cut off by the token limit. Say "continue" to go on.' });
+    return { content, calls, raw };
   }
 
   // Resolves to { text, stopped, error, limit }. Events are emitted along the way.
@@ -222,10 +242,10 @@ function createAgent(opts) {
     try {
       let step = 0;
       for (; step < maxSteps; step++) {
-        const { content, calls } = await turn(signal, step);
+        const { content, calls, raw } = await turn(signal, step);
         result.steps = step + 1;
         if (content.trim()) result.text = content;
-        conv.push({ role: 'assistant', content, ...(calls.length ? { tool_calls: calls } : {}) });
+        conv.push({ role: 'assistant', content, ...(calls.length ? { tool_calls: calls } : {}), ...(raw || {}) });
         changed();
         if (!calls.length) break;
         emit({ type: 'turn_end' });
@@ -290,9 +310,19 @@ function createAgent(opts) {
     if (abort) throw new Error('Stop the current run first.');
     if (!conv.length) return 'Nothing to compact.';
     const s = getSettings();
+    const ask = 'Summarize our conversation so far in under 300 words: goals, decisions, files changed, open tasks.';
+    if (claude.isClaude(s.model)) {
+      const release = gate ? await gate(id, null) : null;
+      let summary;
+      try { summary = await claude.complete([...conv, { role: 'user', content: ask }], s.model); } finally { if (release) release(); }
+      if (!summary.trim()) throw new Error('The model returned an empty summary.');
+      conv = [{ role: 'user', content: `Summary of the conversation so far:\n${summary}` }, { role: 'assistant', content: 'Understood.' }];
+      changed();
+      return summary;
+    }
     const body = {
       model: s.model, stream: false, think: false,
-      messages: [...conv, { role: 'user', content: 'Summarize our conversation so far in under 300 words: goals, decisions, files changed, open tasks.' }],
+      messages: [...conv.map(plain), { role: 'user', content: ask }],
     };
     body.options = {};
     applyRuntime(body, s);
@@ -370,4 +400,17 @@ async function runSubAgent(tctx, args, cfg = {}) {
   return (r.limit ? `[Step limit reached, partial result]\n` : '') + (out.length > 8000 ? out.slice(0, 8000) + '\n[truncated]' : out);
 }
 
-module.exports = { createAgent, runSubAgent, repairConv, ROLES, setDebugSink, hasDebugSink, debugEmit, scrub };
+// A failed fetch to Ollama: "not running" and "running but did not answer in time" are different problems. Node's fetch gives up waiting for
+// the first response after 5 minutes; a big model read from a cold or slow disk (seen: 17 MB/s) can take longer than that to load, and
+// calling that "cannot reach Ollama" sent people off to restart a server that was fine.
+function fetchFailure(e, host) {
+  const code = (e && e.cause && e.cause.code) || (e && e.code) || '';
+  if (/TIMEOUT/i.test(code) || (e && e.name === 'TimeoutError')) {
+    const err = new Error(`Ollama is running at ${host} but did not answer within 5 minutes. A big model loading from a slow disk can take that long: try again (the part already read is cached, so the next try is faster).`);
+    err.slowLoad = true;
+    return err;
+  }
+  return new Error(`Cannot reach Ollama at ${host}. Start it (open the Ollama app or run "ollama serve").`);
+}
+
+module.exports = { createAgent, runSubAgent, repairConv, ROLES, setDebugSink, hasDebugSink, debugEmit, scrub, fetchFailure };

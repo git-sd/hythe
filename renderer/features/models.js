@@ -45,6 +45,7 @@ Faber.register('models', (F) => {
   }
   function badgesFor(m, mem) {
     const out = [];
+    if (m.online) { out.push(badge('online', 'online', 'Your prompts and file contents are sent to Anthropic over the internet')); out.push(badge('tools', '')); return out; }
     if (m.loaded) out.push(badge('loaded', 'ok', 'Currently loaded in memory'));
     if (m.caps === null) out.push(badge('capabilities unknown', 'dim'));
     else {
@@ -59,6 +60,7 @@ Faber.register('models', (F) => {
     return out;
   }
   function metaLine(m) {
+    if (m.online) return `${m.note}  \u00b7  ${m.price} per million tokens (in / out)  \u00b7  needs your API key`;
     return [m.params && m.params + ' params', m.quant, m.family, m.ctx && fmtCtx(m.ctx) + ' ctx', fmtBytes(m.size), m.modified && fmtAgo(m.modified)]
       .filter(Boolean).join('  \u00b7  ');
   }
@@ -200,7 +202,9 @@ Faber.register('models', (F) => {
         const terms = search.value.toLowerCase().split(/\s+/).filter(Boolean);
         const fav = favs();
         const mem = S.data && S.data.mem;
-        let out = models().filter((m) => terms.every((t) => {
+        // online entries come from the claude feature, only while the user has turned it on
+        const online = typeof F.claudeModels === 'function' ? F.claudeModels() : [];
+        let out = models().concat(online).filter((m) => terms.every((t) => {
           if (t === 'tools') return hasCap(m, 'tools');
           if (t === 'loaded') return m.loaded;
           if (t === 'thinking' || t === 'vision') return hasCap(m, t);
@@ -239,7 +243,7 @@ Faber.register('models', (F) => {
           star.innerHTML = '<svg viewBox="0 0 16 16"><path d="M8 1.5l1.9 4.1 4.4.5-3.3 3 .9 4.4L8 11.3 4.1 13.5 5 9.1 1.7 6.1l4.4-.5z"/></svg>';
           star.onclick = (e) => { e.stopPropagation(); toggleFav(m.name); };
           const main = el('div', 'mpMain');
-          const nm = el('div', 'mpName', m.name);
+          const nm = el('div', 'mpName', m.online ? m.label : m.name);
           nm.title = m.name;
           if (m.name === current) nm.appendChild(el('span', 'mTag', 'current'));
           const meta = el('div', 'mpMeta', metaLine(m));
@@ -248,7 +252,8 @@ Faber.register('models', (F) => {
           main.append(nm, meta, bs);
           const info = el('button', 'ghost', 'Info');
           info.onclick = (e) => { e.stopPropagation(); openInfo(m.name); };
-          row.append(star, main, info);
+          row.append(star, main);
+          if (!m.online) row.append(info);
           row.onmousemove = () => { if (sel !== i) { sel = i; mark(); } };
           row.onclick = () => choose(m);
           list.appendChild(row);
@@ -668,7 +673,28 @@ Faber.register('models', (F) => {
     btns.append(bv, bi, bd);
     const msg = el('div', 'mgMsg');
     const list = el('div', 'mgList');
-    root.append(head, disk, btns, msg, list);
+    // other features (resources) add views next to the model list through F.modelsViews
+    const mainBox = el('div', 'mgMain');
+    mainBox.append(head, disk, btns, msg, list);
+    const extra = F.modelsViews || [];
+    if (extra.length) {
+      const seg = el('div', 'mgSeg');
+      const boxes = { models: mainBox };
+      const show = (id) => {
+        for (const [k, b] of Object.entries(boxes)) b.hidden = k !== id;
+        for (const b of seg.children) b.classList.toggle('on', b.dataset.id === id);
+        const v = extra.find((x) => x.id === id);
+        if (v && v.onShow) v.onShow(boxes[id]);
+        for (const x of extra) if (x.id !== id && x.onHide) x.onHide();
+      };
+      const mk = (id, title) => { const b = el('button', 'mgSegBtn', title); b.dataset.id = id; b.onclick = () => show(id); seg.appendChild(b); };
+      mk('models', 'Models');
+      for (const v of extra) { mk(v.id, v.title); boxes[v.id] = el('div', 'mgView'); boxes[v.id].hidden = true; v.render(boxes[v.id]); }
+      root.append(seg, mainBox, ...extra.map((v) => boxes[v.id]));
+      F.showModelsView = show;
+      mainBox.hidden = false;
+      seg.firstChild.classList.add('on');
+    } else root.append(mainBox);
     function paint() {
       const d = S.data;
       list.innerHTML = ''; msg.innerHTML = '';

@@ -7,9 +7,9 @@ const http = require('http');
 
 function startFake(opts = {}) {
   const fake = {
-    requests: [], inflight: 0, maxInflight: 0, aborted: 0, port: 0, url: '',
-    models: opts.models || ['qwen3.5:9b', 'fake-b:1b', 'nothink:1b'],
-    script: null,
+    requests: [], generates: [], inflight: 0, maxInflight: 0, aborted: 0, port: 0, url: '',
+    models: opts.models || ['qwen3.5:9b', 'fake-b:1b', 'nothink:1b'], sizes: opts.sizes || {}, loaded: opts.loaded || [],
+    script: null, killFirst: 0,
     close: () => new Promise((r) => { if (server.closeAllConnections) server.closeAllConnections(); server.close(r); }),
   };
 
@@ -36,7 +36,24 @@ function startFake(opts = {}) {
   const server = http.createServer((req, res) => {
     const json = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
     if (req.url === '/api/version') return json(200, { version: '0.0.0-fake' });
-    if (req.url === '/api/tags') return json(200, { models: fake.models.map((name) => ({ name, model: name })) });
+    if (req.url === '/api/tags') return json(200, { models: fake.models.map((name) => ({ name, model: name, size: fake.sizes[name] || 5.5e9 })) });
+    if (req.url === '/api/ps') return json(200, { models: fake.loaded || [] });
+    if (req.url === '/api/show') {
+      return json(200, { details: { parameter_size: '9B', quantization_level: 'Q4_K_M' }, capabilities: ['completion', 'tools', 'thinking'], parameters: '', template: '', model_info: { 'general.architecture': 'llama', 'llama.block_count': 32, 'llama.attention.head_count': 32, 'llama.attention.head_count_kv': 8, 'llama.embedding_length': 4096, 'llama.context_length': 131072 } });
+    }
+    if (req.url === '/api/generate') {
+      // speed depends on num_thread (hyper-threads hurt) so benchmarks / auto-tune have something to find
+      let g = '';
+      req.on('data', (d) => { g += d; });
+      return req.on('end', () => {
+        const b = JSON.parse(g || '{}');
+        fake.generates.push(b);
+        if (!fake.models.includes(b.model)) return json(404, { error: `model "${b.model}" not found` });
+        const t = (b.options && b.options.num_thread) || 4, n = (b.options && b.options.num_predict) || 48;
+        const speed = t <= 4 ? 2 * t : 6.4;
+        json(200, { response: 'x', done: true, load_duration: 2e9, prompt_eval_count: 30, prompt_eval_duration: 1.5e9, eval_count: n, eval_duration: (n / speed) * 1e9 });
+      });
+    }
     if (req.url !== '/api/chat') return json(404, { error: 'not found' });
     let raw = '';
     req.on('data', (d) => { raw += d; });
@@ -44,10 +61,11 @@ function startFake(opts = {}) {
       const body = JSON.parse(raw);
       const rec = { model: body.model, think: body.think, options: body.options, keep_alive: body.keep_alive, messages: body.messages, tools: (body.tools || []).map((t) => t.function.name), stream: body.stream, t0: Date.now(), aborted: false, system: body.messages[0] && body.messages[0].content };
       fake.requests.push(rec);
+      if (fake.killFirst > 0) { fake.killFirst--; return json(500, { error: 'llama-server process has terminated: signal: killed' }); }   // the runner was killed (out of memory)
       if (/^nothink/.test(body.model) && body.think !== undefined) return json(400, { error: `"${body.model}" does not support thinking` });
       const user = [...body.messages].reverse().find((m) => m.role === 'user');
       if (user && /\[err\]\s*$/.test(user.content)) return json(500, { error: 'boom from fake' });
-      const out = await (fake.script || defaultScript)(body, rec);
+      const out = (await (fake.script || defaultScript)(body, rec)) || { content: 'ok' };
       if (body.stream === false) return json(200, { model: body.model, message: { role: 'assistant', content: 'SUMMARY: fake summary' }, done: true, done_reason: 'stop' });
       fake.inflight++;
       fake.maxInflight = Math.max(fake.maxInflight, fake.inflight);
@@ -69,7 +87,7 @@ function startFake(opts = {}) {
       if (out.calls && out.calls.length) {
         line({ message: { role: 'assistant', content: '', tool_calls: out.calls.map((c) => ({ function: { name: c.name, arguments: c.args } })) }, done: false });
       }
-      line({ message: { role: 'assistant', content: '' }, done: true, done_reason: out.calls && out.calls.length ? 'tool_calls' : 'stop', total_duration: 900e6, load_duration: 100e6, prompt_eval_count: 50 + body.messages.length * 7, prompt_eval_duration: 200e6, eval_count: Math.max(1, n) * 2, eval_duration: Math.max(1, n) * 2 * 25e6 });
+      line({ message: { role: 'assistant', content: '' }, done: true, done_reason: out.length ? 'length' : out.calls && out.calls.length ? 'tool_calls' : 'stop', total_duration: 900e6, load_duration: 100e6, prompt_eval_count: 50 + body.messages.length * 7, prompt_eval_duration: 200e6, eval_count: Math.max(1, n) * 2, eval_duration: Math.max(1, n) * 2 * 25e6 });
       res.end();
     });
   });

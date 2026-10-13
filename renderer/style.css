@@ -137,11 +137,12 @@ details.think div { white-space: pre-wrap; border-left: 2px solid var(--border);
 #pop .none { padding: 8px 12px; color: var(--muted); font-size: 12px; }
 
 /* editor pane */
-#split { width: 5px; flex: none; cursor: col-resize; background: var(--border); }
-#split:hover, #split.drag { background: var(--accent); }
-#editor { flex: 0 1 var(--edw, 46%); min-width: 260px; display: flex; flex-direction: column; background: var(--bg); min-height: 0; }
-#tabs { display: flex; overflow-x: auto; background: var(--panel); border-bottom: 1px solid var(--border); min-height: 33px; }
-#tabs::-webkit-scrollbar { height: 4px; }
+#editor, .edGroup { display: flex; flex-direction: column; background: var(--bg); min-height: 0; }
+.edGroup[hidden] { display: none; }
+
+.edTabs { display: flex; overflow-x: auto; background: var(--panel); border-bottom: 1px solid var(--border); min-height: 33px; }
+
+.edTabs::-webkit-scrollbar { height: 4px; }
 .tab { display: flex; align-items: center; gap: 8px; padding: 0 8px 0 12px; height: 33px; flex: none; cursor: pointer; color: var(--muted); border-right: 1px solid var(--border); border-top: 2px solid transparent; font-size: 13px; }
 .tab:hover { background: var(--hover); }
 .tab.on { background: var(--bg); color: var(--text); border-top-color: var(--accent); }
@@ -153,17 +154,17 @@ details.think div { white-space: pre-wrap; border-left: 2px solid var(--border);
 .tab.dirty .x svg { display: none; }
 .tab.dirty .x:hover svg { display: block; }
 .tab.dirty .x:hover .dot { display: none; }
-.edBar { display: flex; align-items: center; gap: 4px; padding: 2px 6px 2px 12px; border-bottom: 1px solid var(--border); background: var(--panel); min-height: 30px; }
-.edBar #edPath { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; min-width: 0; }
+.edBar { flex-wrap: wrap; display: flex; align-items: center; gap: 4px; padding: 2px 6px 2px 12px; border-bottom: 1px solid var(--border); background: var(--panel); min-height: 30px; }
+.edBar .edPath { flex: 1 1 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; min-width: 0; }
 .edBar button.ghost:not(.icon) { padding: 2px 8px; font-size: 12px; }
-#edBody { flex: 1; display: flex; min-height: 0; font: 13px/20px var(--mono); }
-#edGutter { margin: 0; padding: 8px 10px 8px 8px; width: auto; min-width: 46px; text-align: right; color: #55555f; background: var(--bg); overflow: hidden; user-select: none; font: inherit; border-right: 1px solid var(--border); }
-#edWrap { position: relative; flex: 1; min-width: 0; }
-#edHl, #edText { position: absolute; inset: 0; margin: 0; padding: 8px 12px; border: 0; border-radius: 0; font: inherit; tab-size: 2; white-space: pre; overflow: auto; word-wrap: normal; letter-spacing: 0; }
-#edHl { pointer-events: none; color: var(--text); overflow: hidden; }
-#edText { background: transparent; color: transparent; caret-color: var(--text); resize: none; outline: none; box-shadow: none; z-index: 1; }
-#edText::selection { background: #4c3a86; color: transparent; }
-#edEmpty { flex: 1; display: grid; place-items: center; color: var(--muted); }
+.edBody { flex: 1; display: flex; min-height: 0; font: 13px/20px var(--mono); }
+.edGutter { margin: 0; padding: 8px 10px 8px 8px; width: auto; min-width: 46px; text-align: right; color: #55555f; background: var(--bg); overflow: hidden; user-select: none; font: inherit; border-right: 1px solid var(--border); }
+.edWrap { position: relative; flex: 1; min-width: 0; }
+.edHl, .edText { position: absolute; inset: 0; margin: 0; padding: 8px 12px; border: 0; border-radius: 0; font: inherit; tab-size: 2; white-space: pre; overflow: auto; word-wrap: normal; letter-spacing: 0; }
+.edHl { pointer-events: none; color: var(--text); overflow: hidden; }
+.edText { background: transparent; color: transparent; caret-color: var(--text); resize: none; outline: none; box-shadow: none; z-index: 1; }
+.edText::selection { background: #4c3a86; color: transparent; }
+.edEmpty { flex: 1; display: grid; place-items: center; color: var(--muted); }
 .tk-c { color: #6b6b78; font-style: italic; } .tk-s { color: #a5d6a7; } .tk-n { color: #f0a97b; } .tk-k { color: #b69cff; }
 
 /* terminal (xterm.js) */
@@ -184,10 +185,10 @@ details.think div { white-space: pre-wrap; border-left: 2px solid var(--border);
 .termPane { position: absolute; inset: 4px 0 0 10px; }
 .xterm { height: 100%; }
 .xterm-viewport { background: transparent !important; }
-#edFlash { position: absolute; left: 0; right: 0; background: var(--sel); border-left: 3px solid var(--accent); opacity: 0; transition: opacity .7s; pointer-events: none; }
-#edFlash.on { opacity: 1; transition: none; }
-#edConflict { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--sel); border-bottom: 1px solid var(--accent); font-size: 13px; }
-#edConflict button { padding: 3px 10px; font-size: 12px; }
+.edFlash { position: absolute; left: 0; right: 0; background: var(--sel); border-left: 3px solid var(--accent); opacity: 0; transition: opacity .7s; pointer-events: none; }
+.edFlash.on { opacity: 1; transition: none; }
+.edConflict { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--sel); border-bottom: 1px solid var(--accent); font-size: 13px; }
+.edConflict button { padding: 3px 10px; font-size: 12px; }
 
 /* extension scaffold: sidebar tabs, modal, toast */
 .sidePane { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -247,3 +248,33 @@ details.think div { white-space: pre-wrap; border-left: 2px solid var(--border);
 .shit { padding: 2px 10px 2px 22px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #cfcfd6; font-family: var(--mono); font-size: 12px; }
 .shit:hover { background: var(--hover); }
 .shit mark { background: var(--sel); color: var(--text); border-bottom: 1px solid var(--accent); }
+
+/* dock: the layout of chat / editors / terminal (renderer/dock.js). Flat and solid. */
+#dock { flex: 1; min-width: 0; min-height: 0; display: flex; }
+.dNode { flex: 1; min-width: 0; min-height: 0; display: flex; }
+.dSplit.h { flex-direction: row; }
+.dSplit.v { flex-direction: column; }
+.dCell { flex-basis: 0; min-width: 0; min-height: 0; display: flex; }
+.dCell > .dNode { flex: 1; }
+.dLeaf { flex-direction: column; }
+.dHead { flex: none; display: flex; align-items: stretch; height: 26px; background: var(--panel); border-bottom: 1px solid var(--border); overflow: hidden; }
+.dTab { display: flex; align-items: center; gap: 6px; padding: 0 6px 0 12px; font-size: 12px; color: var(--muted); cursor: grab; border-right: 1px solid var(--border); border-top: 2px solid transparent; user-select: none; white-space: nowrap; max-width: 260px; min-width: 0; }
+.dTab:hover { background: var(--hover); }
+.dTab.on { color: var(--text); background: var(--bg); border-top-color: var(--accent); }
+.dTitle { overflow: hidden; text-overflow: ellipsis; }
+.dClose { border: 0; background: transparent; color: var(--muted); padding: 0 5px; font-size: 14px; line-height: 1; border-radius: 3px; }
+.dClose:hover { background: var(--border); color: var(--text); }
+.dBody { flex: 1; min-height: 0; min-width: 0; display: flex; position: relative; }
+.dBody > .dPanel { flex: 1 1 auto !important; width: 100% !important; height: 100% !important; min-width: 0 !important; min-height: 0 !important; max-width: none !important; }
+.dBody > .dPanel[hidden] { display: none !important; }
+.dBody #termSplit { display: none; }
+.dSp { flex: none; background: var(--border); z-index: 2; }
+.dSp.dv { width: 5px; cursor: col-resize; }
+.dSp.dh { height: 5px; cursor: row-resize; }
+.dSp:hover, .dSp.on { background: var(--accent); }
+.dDrop { position: fixed; z-index: 80; border: 3px solid var(--accent); background: transparent; pointer-events: none; display: none; }
+.dGhost { position: fixed; z-index: 81; padding: 3px 10px; background: var(--accent); color: #fff; font-size: 12px; border-radius: 4px; pointer-events: none; }
+body.dDragging, body.dDragging * { cursor: grabbing !important; user-select: none !important; }
+#dockPark { display: none; }
+.edGroup.edActive .edTabs .tab.on { border-top-color: var(--accent); }
+.edGroup:not(.edActive) .edTabs .tab.on { border-top-color: var(--muted); }

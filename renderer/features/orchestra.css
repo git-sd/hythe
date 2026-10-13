@@ -1,0 +1,65 @@
+/* orchestra tab: flat, solid colours, theme variables only */
+.or { overflow: auto; padding: 8px; font-size: 13px; }
+.orSetup, .orRun { display: flex; flex-direction: column; gap: 8px; }
+.orSetup[hidden], .orRun[hidden] { display: none; }
+.orHint { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.orBad { color: var(--bad); font-size: 12px; overflow-wrap: anywhere; }
+.orTask { width: 100%; resize: vertical; min-height: 70px; }
+.orRoster { display: flex; flex-direction: column; gap: 8px; }
+.orRole { display: flex; flex-direction: column; gap: 2px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.orRole select { width: 100%; min-width: 0; }
+.orSugHead { margin-top: 4px; }
+.orSug { border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; background: var(--panel2); display: flex; flex-direction: column; gap: 2px; }
+.orSugTop { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.orSugTop button { padding: 1px 8px; font-size: 11.5px; }
+.orOpts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.orOpt { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+.orOpt input, .orOpt select { width: 100%; min-width: 0; }
+.orStatus { font-weight: 600; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel2); }
+.orStatus.run { border-color: var(--accent); }
+.orStatus.ok { border-color: var(--ok); }
+.orStatus.bad { border-color: var(--bad); }
+.orTaskText { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.orBtns { display: flex; gap: 6px; flex-wrap: wrap; }
+.orBtns button { padding: 3px 10px; font-size: 12px; }
+.orApproval { border: 1px solid #f59e0b; border-radius: 4px; padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; background: var(--panel2); }
+.orPre { margin: 0; max-height: 160px; overflow: auto; font: 11.5px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }
+.orStep { border-top: 1px solid var(--border); padding: 5px 0; display: flex; flex-direction: column; gap: 2px; }
+.orStepTop { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.orChip { font-size: 11px; padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); }
+.orChip.doing { color: var(--text); border-color: var(--accent); }
+.orChip.done { color: var(--ok); border-color: var(--ok); }
+.orChip.bad { color: var(--bad); border-color: var(--bad); }
+.orFinal { white-space: pre-wrap; overflow-wrap: anywhere; border-left: 3px solid var(--ok); padding-left: 8px; }
+
+/* chat with the orchestrator */
+.or.orChatMode { display: flex; flex-direction: column; overflow: hidden; gap: 8px; }
+.orModes { display: flex; gap: 0; flex: 0 0 auto; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; align-self: flex-start; }
+.orMode { border: 0; border-radius: 0; background: var(--panel2); padding: 3px 12px; font-size: 12px; }
+.orMode + .orMode { border-left: 1px solid var(--border); }
+.orMode.on { background: var(--sel); color: var(--text); }
+.orChatBox { display: flex; flex-direction: column; gap: 8px; min-height: 0; flex: 1 1 auto; }
+.orChatBox[hidden] { display: none; }
+.orTeam { flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px; max-height: 30%; overflow: auto; }
+.orTeamHead { display: flex; align-items: baseline; gap: 8px; }
+.orAgents { display: flex; flex-wrap: wrap; gap: 4px; }
+.orAgent { border: 1px solid var(--border); border-radius: 4px; background: var(--panel2); padding: 1px 2px 1px 7px; display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 12px; }
+.orX { padding: 0 6px; font-size: 12px; line-height: 16px; border: 0; }
+.orModelsLine { font-family: var(--mono); font-size: 11px; }
+.orLog { flex: 1 1 auto; min-height: 160px; overflow: auto; display: flex; flex-direction: column; gap: 6px; border: 1px solid var(--border); border-radius: 4px; padding: 6px; background: var(--bg); }
+.orMsg { border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; background: var(--panel2); max-width: 100%; }
+.orMsg.you { border-color: var(--accent); align-self: flex-end; max-width: 92%; }
+.orMsg.k-progress { color: var(--muted); border-style: dashed; }
+.orMsg.k-final { border-left: 3px solid var(--ok); }
+.orMsgWho { font-size: 11px; color: var(--muted); }
+.orMsgText { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+.orMsg.k-team .orMsgText { font: 12px/1.45 var(--mono); }
+.orBusy { font-size: 12px; color: var(--accent); }
+.orBusy[hidden] { display: none; }
+.orApprovals { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; max-height: 40%; overflow: auto; }
+.orChips { display: flex; gap: 6px; flex-wrap: wrap; flex: 0 0 auto; }
+.orChip2 { padding: 1px 10px; font-size: 11.5px; background: var(--panel2); border: 1px solid var(--border); }
+.orInputRow { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; }
+.orInput { width: 100%; min-width: 0; resize: vertical; min-height: 44px; max-height: 160px; }
+.orSendRow { display: flex; gap: 6px; justify-content: flex-end; }
+.orSendRow button { padding: 3px 12px; font-size: 12px; }
