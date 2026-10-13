@@ -1,0 +1,82 @@
+/* styles for the models feature (flat, theme variables only) */
+.mBadge { display: inline-block; font-size: 11px; line-height: 16px; padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); white-space: nowrap; }
+.mBadge.ok { color: var(--ok); border-color: var(--ok); }
+.mBadge.bad { color: var(--bad); border-color: var(--bad); }
+.mBadge.warn { color: var(--text); border-color: var(--accent); }
+.mBadge.dim { opacity: .7; }
+.mTag { margin-left: 8px; font-size: 11px; color: var(--accent); }
+.mNote { color: var(--muted); padding: 8px 0; }
+.mNote.bad, .mErr { color: var(--bad); }
+.mErr { min-height: 0; font-size: 13px; margin: 2px 0; overflow-wrap: anywhere; }
+.mOk { color: var(--ok); font-size: 13px; }
+.mText { margin: 0 0 12px; color: var(--muted); }
+.mLabel { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+.mWide { width: 100%; }
+.mono { font-family: var(--mono); font-size: 12px; }
+.mRow { display: flex; gap: 6px; }
+.mRow input { flex: 1; min-width: 0; }
+.mField { margin-bottom: 10px; }
+.mGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 0 12px; }
+.mGrid input { width: 100%; }
+.mCheck { display: flex; align-items: center; gap: 6px; margin: 8px 0 4px; }
+.mpActs { display: flex; gap: 8px; margin-top: 12px; }
+.mProg { margin: 8px 0; }
+.mProgTxt { font-size: 12px; color: var(--muted); margin-bottom: 4px; overflow-wrap: anywhere; }
+.mResult { min-height: 1.4em; overflow-wrap: anywhere; }
+.mPreview { margin: 6px 0 0; padding: 8px 10px; font: 12px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 200px; overflow: auto; background: var(--panel2); border: 1px solid var(--border); border-radius: 4px; }
+.modalFoot button.primary.danger { background: var(--bad); border-color: var(--bad); color: #1a0b0b; }
+
+/* picker */
+.mpTop { display: flex; gap: 8px; margin-bottom: 8px; }
+.mpSearch { flex: 1; min-width: 0; }
+.mpMsg { display: flex; align-items: center; gap: 10px; }
+.mpList { max-height: min(50vh, 440px); overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; }
+.mpList:empty { display: none; }
+.mpRow { display: flex; align-items: flex-start; gap: 6px; padding: 7px 8px; cursor: pointer; border-left: 3px solid transparent; border-bottom: 1px solid var(--border); }
+.mpRow:last-child { border-bottom: 0; }
+.mpRow.sel { background: var(--hover); }
+.mpRow.cur { border-left-color: var(--accent); }
+.mpMain { flex: 1; min-width: 0; }
+.mpName { font-weight: 500; overflow-wrap: anywhere; }
+.mpMeta { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.mpBadges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.mpBadges:empty { display: none; }
+.mpFoot { margin-top: 8px; }
+.mStar svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.2; }
+.mStar.on { color: var(--accent); }
+.mStar.on svg { fill: currentColor; }
+
+/* info */
+.miHead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.miName { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; flex: 1 1 200px; }
+.miFacts { display: grid; grid-template-columns: max-content 1fr; gap: 3px 16px; margin-bottom: 12px; font-size: 13px; }
+.miFacts .k { color: var(--muted); }
+.miFacts .v { overflow-wrap: anywhere; }
+.miBox { border: 1px solid var(--border); border-radius: 4px; padding: 10px; margin-bottom: 10px; }
+.miH { font-weight: 600; margin-bottom: 4px; }
+.mqtOut { margin: 8px 0 0; min-height: 2.6em; padding: 8px 10px; font: 13px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--panel2); border: 1px solid var(--border); border-radius: 4px; }
+.mqtStats { margin-top: 6px; }
+.miBlock { margin-bottom: 8px; }
+.miBlock summary { cursor: pointer; color: var(--muted); }
+.miBlock pre { margin: 6px 0 0; padding: 8px 10px; font: 12px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; background: var(--panel2); border: 1px solid var(--border); border-radius: 4px; }
+
+/* sidebar manager */
+.mg { overflow: hidden; }
+.mgHead { display: flex; align-items: center; padding: 6px 6px 0 12px; }
+.mgTitle { flex: 1; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; }
+.mgHead button { padding: 2px 8px; font-size: 12px; }
+.mgDisk { padding: 2px 12px 6px; }
+.mgBtns { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 12px 8px; }
+.mgBtns button { padding: 3px 8px; font-size: 12px; }
+.mgMsg { padding: 0 12px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; overflow-wrap: anywhere; }
+.mgList { flex: 1; overflow-y: auto; border-top: 1px solid var(--border); }
+.mgRow { border-bottom: 1px solid var(--border); border-left: 3px solid transparent; }
+.mgRow.cur { border-left-color: var(--accent); }
+.mgRow.open { background: var(--panel2); }
+.mgTop { padding: 6px 10px 6px 9px; cursor: pointer; }
+.mgTop:hover { background: var(--hover); }
+.mgName { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mgName.fav::before { content: "\2022 "; color: var(--accent); }
+.mgSub { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mgAct { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 10px 8px 9px; }
+.mgAct button { padding: 2px 8px; font-size: 12px; }

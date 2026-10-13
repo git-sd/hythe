@@ -1,0 +1,26 @@
+{
+  "id": "todos",
+  "name": "TODO scanner",
+  "version": "1.0.0",
+  "description": "Scans the open folder for TODO, FIXME, HACK and XXX comments (skipping node_modules, .git, dist and binary files), grouped by file with a filter box. Click a result to open it at that line.",
+  "permissions": ["read-files", "ai-tools"],
+  "commands": [
+    { "name": "todos", "title": "Scan for TODOs", "handler": "todo-scan", "output": "panel" }
+  ],
+  "tools": [
+    {
+      "name": "find_todos",
+      "description": "List TODO / FIXME / HACK / XXX comments in the project (file, line, text). Read-only.",
+      "effect": "read",
+      "handler": "todo-scan",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "format": "path", "description": "Folder to scan (default: the whole project)" },
+          "tag": { "type": "string", "enum": ["TODO", "FIXME", "HACK", "XXX"], "description": "Only this tag (default: all)" }
+        },
+        "required": []
+      }
+    }
+  ]
+}

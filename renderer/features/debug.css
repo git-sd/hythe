@@ -1,0 +1,23 @@
+/* styles for the debug feature */
+.dbgTools { display: flex; gap: 4px; padding: 6px 8px; flex-wrap: wrap; }
+.dbgTools button { padding: 2px 9px; font-size: 12px; }
+.dbgFilt { padding: 0 8px 4px; }
+.dbgFilt select { width: 100%; padding: 3px 6px; font-size: 12px; }
+.dbgKinds { display: flex; flex-wrap: wrap; gap: 2px; padding: 0 6px 4px; }
+.dbgKinds button { padding: 1px 6px; font-size: 11px; }
+.dbgKinds button.on { color: var(--text); background: var(--sel); }
+.dbgMeter { padding: 4px 8px; font-size: 11px; color: var(--muted); }
+.dbgBar { height: 5px; background: var(--panel2); margin-top: 3px; }
+.dbgBar i { display: block; height: 100%; background: var(--accent); }
+.dbgBar i.hot { background: var(--bad); }
+.dbgCount { padding: 2px 10px; font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--border); }
+.dbgRows { flex: 1; min-height: 0; overflow: auto; font: 11.5px/1.35 var(--mono); }
+.dbgRow { display: grid; grid-template-columns: auto auto 1fr; column-gap: 6px; padding: 3px 8px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.dbgRow:hover { background: var(--hover); }
+.dbgRow .dt { color: var(--muted); }
+.dbgRow .dk { color: var(--accent); }
+.dbgRow.k-error .dk { color: var(--bad); }
+.dbgRow.k-tool .dk { color: var(--ok); }
+.dbgRow .ds { grid-column: 3; color: var(--muted); }
+.dbgRow .dm { grid-column: 1 / 4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dbgJson { margin: 0; font: 12px/1.45 var(--mono); white-space: pre-wrap; word-break: break-word; }

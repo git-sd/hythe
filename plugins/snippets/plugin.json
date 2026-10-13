@@ -1,0 +1,21 @@
+{
+  "id": "snippets",
+  "name": "Snippets",
+  "version": "1.0.0",
+  "description": "Common code snippets for the editor. Type a prefix such as clg or def and press Tab. $1 marks where the cursor goes; ${file} and ${date} are filled in.",
+  "permissions": ["snippets"],
+  "snippets": [
+    { "prefix": "clg", "body": "console.log($1);$0", "languages": ["js", "jsx", "mjs", "cjs", "ts", "tsx"] },
+    { "prefix": "fn", "body": "function ${1:name}($2) {\n  $0\n}", "languages": ["js", "jsx", "mjs", "cjs", "ts", "tsx"] },
+    { "prefix": "afn", "body": "const ${1:name} = async ($2) => {\n  $0\n};", "languages": ["js", "jsx", "mjs", "cjs", "ts", "tsx"] },
+    { "prefix": "forof", "body": "for (const ${1:item} of ${2:items}) {\n  $0\n}", "languages": ["js", "jsx", "mjs", "cjs", "ts", "tsx"] },
+    { "prefix": "try", "body": "try {\n  $1\n} catch (e) {\n  $0\n}", "languages": ["js", "jsx", "mjs", "cjs", "ts", "tsx", "java", "cs"] },
+    { "prefix": "def", "body": "def ${1:name}($2):\n    $0", "languages": ["py"] },
+    { "prefix": "ifmain", "body": "if __name__ == \"__main__\":\n    $0", "languages": ["py"] },
+    { "prefix": "pr", "body": "print($1)$0", "languages": ["py"] },
+    { "prefix": "iferr", "body": "if err != nil {\n\treturn $1err\n}$0", "languages": ["go"] },
+    { "prefix": "main", "body": "package main\n\nfunc main() {\n\t$0\n}", "languages": ["go"] },
+    { "prefix": "todo", "body": "TODO($1): $0", "languages": ["*"] },
+    { "prefix": "hdr", "body": "${file} - $1\nCreated ${date}\n$0", "languages": ["*"] }
+  ]
+}

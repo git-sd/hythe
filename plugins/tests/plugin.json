@@ -1,0 +1,37 @@
+{
+  "id": "tests",
+  "name": "Test runner",
+  "version": "1.0.0",
+  "description": "Detect and run the project's tests with live output and a pass/fail summary: npm/pnpm/yarn test, vitest, jest, pytest, go test, cargo test or dotnet test. Only tools that are already installed are used; package downloads are switched off.",
+  "permissions": ["run-commands", "ai-tools"],
+  "commands": [
+    {
+      "name": "test",
+      "title": "Run tests",
+      "scope": "folder",
+      "output": "panel",
+      "parse": "tests",
+      "timeoutSec": 300,
+      "candidates": [
+        { "label": "pnpm test", "detect": ["file:pnpm-lock.yaml", "script:test"], "hint": "install pnpm", "run": "{bin:pnpm} test" },
+        { "label": "yarn test", "detect": ["file:yarn.lock", "script:test"], "hint": "install yarn", "run": "{bin:yarn} test" },
+        { "label": "npm test", "detect": ["file:package.json", "script:test"], "hint": "install Node.js", "run": "{bin:npm} test" },
+        { "label": "vitest", "detect": ["file:package.json"], "hint": "add vitest to the project's devDependencies with npm", "run": "{bin:vitest} run" },
+        { "label": "jest", "detect": ["file:package.json"], "hint": "add jest to the project's devDependencies with npm", "run": "{bin:jest}" },
+        { "label": "pytest (python module)", "detect": ["file:pyproject.toml|pytest.ini|setup.py|setup.cfg|tox.ini|conftest.py|tests|test|*.py"], "requires": ["py:pytest"], "hint": "pip install pytest", "run": "{py} -m pytest -q" },
+        { "label": "pytest", "detect": ["file:pyproject.toml|pytest.ini|setup.py|setup.cfg|tox.ini|conftest.py|tests|test|*.py"], "hint": "pip install pytest", "run": "{bin:pytest} -q" },
+        { "label": "go test", "detect": ["file:go.mod"], "hint": "install Go from go.dev", "run": "{bin:go} test ./..." },
+        { "label": "cargo test", "detect": ["file:Cargo.toml"], "hint": "install Rust from rustup.rs", "run": "{bin:cargo} test --offline" },
+        { "label": "dotnet test", "detect": ["file:*.sln|*.csproj|*.fsproj|*.vbproj"], "requires": ["sdk:dotnet"], "hint": "install the .NET SDK", "run": "{bin:dotnet} test --no-restore" }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "name": "run_tests",
+      "description": "Run the project's test suite (npm test, vitest, jest, pytest, go test, cargo test or dotnet test, whichever is installed and detected) and return a trimmed result with a PASS/FAIL summary. Does not change files. Never installs anything.",
+      "effect": "read",
+      "command": "test"
+    }
+  ]
+}

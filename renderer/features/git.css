@@ -1,0 +1,121 @@
+/* styles for the git feature: flat, solid colours, theme variables only */
+.gitPane { font-size: 12px; min-height: 0; }
+.gitPane .spacer { flex: 1; }
+.gitPane .bad, .gNone.bad { color: var(--bad); }
+.gHead { display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px; border-bottom: 1px solid var(--border); }
+.gBranchName { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.gSync { color: var(--muted); white-space: nowrap; }
+.gDirty { font-size: 11px; padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; white-space: nowrap; }
+.gDirty.clean { color: var(--ok); }
+.gDirty.dirty { color: var(--accent); }
+.gRemote { display: flex; align-items: center; gap: 4px; padding: 5px 8px 5px 12px; border-bottom: 1px solid var(--border); }
+.gOnline { font-size: 10px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; margin-right: 4px; }
+.gScroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+
+.gbtn { padding: 2px 8px; font-size: 12px; border-radius: 4px; }
+.gbtn:disabled { opacity: .45; cursor: default; }
+.gbtn.primary:disabled { opacity: .45; }
+.gbtn.gWide { width: calc(100% - 16px); margin: 6px 8px; }
+.gbtn.gicon { width: 22px; height: 22px; padding: 0; display: inline-grid; place-items: center; border-color: transparent; background: transparent; color: var(--muted); }
+.gbtn.gicon:hover { background: var(--hover); color: var(--text); }
+.gbtn.gicon svg { width: 13px; height: 13px; fill: currentColor; }
+.gbtn.gicon span { font-size: 15px; line-height: 1; }
+
+.gNotice { padding: 16px 12px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.gNotice p { margin: 0; color: var(--muted); }
+.gNotice p.bad { color: var(--bad); }
+.gNone { padding: 4px 12px; color: var(--muted); font-size: 12px; white-space: pre-wrap; }
+
+.gOut { border-bottom: 1px solid var(--border); background: var(--panel2); }
+.gOut.bad .gOutTitle { color: var(--bad); }
+.gOutHead { display: flex; align-items: center; padding: 3px 6px 0 12px; }
+.gOutTitle { font-weight: 600; }
+.gOutText { margin: 0; padding: 4px 12px 8px; max-height: 140px; overflow: auto; font: 11.5px/1.4 var(--mono); white-space: pre-wrap; color: var(--muted); }
+
+.gSec { border-bottom: 1px solid var(--border); }
+.gSecHead { display: flex; align-items: center; gap: 6px; padding: 5px 8px 5px 8px; cursor: pointer; user-select: none; }
+.gSecHead:hover { background: var(--hover); }
+.gArrow { width: 0; height: 0; border-left: 5px solid var(--muted); border-top: 4px solid transparent; border-bottom: 4px solid transparent; flex: none; }
+.gArrow.open { transform: rotate(90deg); }
+.gSecTitle { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; }
+.gCount { color: var(--muted); font-size: 11px; }
+.gSecBody { padding-bottom: 6px; }
+.gSub { padding: 6px 12px 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); }
+
+.gMsg { display: block; width: calc(100% - 16px); margin: 6px 8px 4px; resize: vertical; font: 12px/1.4 var(--mono); padding: 6px 8px; }
+.gOpts { display: flex; flex-wrap: wrap; gap: 2px 12px; padding: 0 12px; color: var(--muted); }
+.gOpt { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; }
+.gOpt input { margin: 0; accent-color: var(--accent); }
+.gCommitRow { display: flex; gap: 6px; padding: 6px 8px 2px; }
+.gCommitRow .gbtn { padding: 4px 10px; }
+.gHint { padding: 2px 12px; color: var(--muted); font-size: 11px; }
+
+.gGrp { margin-top: 4px; }
+.gGrpHead { display: flex; align-items: center; gap: 6px; padding: 3px 8px 3px 12px; color: var(--muted); }
+.gGrpTitle { font-size: 11px; font-weight: 600; }
+.gGrpHead .gbtn { padding: 0 6px; font-size: 11px; border-color: transparent; background: transparent; color: var(--muted); }
+.gGrpHead .gbtn:hover { color: var(--text); background: var(--hover); }
+.gFile, .gBranch, .gStash, .gCommit, .ghItem, .gcFile { display: flex; align-items: center; gap: 6px; padding: 2px 8px 2px 12px; min-height: 24px; cursor: pointer; }
+.gFile:hover, .gBranch:hover, .gStash:hover, .gCommit:hover, .ghItem.link:hover, .gcFile:hover { background: var(--hover); }
+.gFile .gAct { display: none; margin-left: auto; flex: none; }
+.gFile:hover .gAct { display: inline-flex; }
+.gs { width: 14px; flex: none; text-align: center; font-family: var(--mono); font-weight: 600; color: var(--muted); }
+.gs.s-M, .gs.s-T { color: var(--accent); }
+.gs.s-A, .gs.s-\? { color: var(--ok); }
+.gs.s-D, .gs.s-\!, .gs.s-U { color: var(--bad); }
+.gs.s-R, .gs.s-C { color: var(--text); }
+.gn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
+.gd { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 0; font-size: 11px; }
+.gBranch.cur .gn { color: var(--accent); font-weight: 600; }
+.gBranch .gbtn, .gStash .gbtn { margin-left: auto; flex: none; }
+.gStash .gd { flex: none; }
+.gChip { font-size: 10.5px; padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); white-space: nowrap; flex: none; }
+.gChip.bad { color: var(--bad); border-color: var(--bad); }
+.gNewBranch { display: flex; align-items: center; gap: 6px; padding: 6px 8px; }
+.gNewBranch input[type=text], .gNewBranch input:not([type]) { flex: 1; min-width: 0; padding: 3px 6px; }
+
+.gCommit { align-items: flex-start; padding-top: 4px; padding-bottom: 4px; }
+.gcMain { flex: 1; min-width: 0; }
+.gcSubj { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gcMeta { display: flex; gap: 8px; color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; }
+.gcHash { font-family: var(--mono); color: var(--accent); flex: none; }
+
+/* GitHub */
+.ghConnect { display: flex; flex-direction: column; gap: 6px; padding: 6px 12px; align-items: flex-start; }
+.ghConnect input[type=password], .ghConnect input[type=text] { width: 100%; padding: 4px 6px; }
+.ghHint { color: var(--muted); font-size: 11px; }
+.ghWho { font-weight: 600; }
+.ghLive { display: flex; gap: 4px; color: var(--muted); cursor: pointer; }
+.ghBar { display: flex; align-items: center; gap: 8px; padding: 4px 12px; }
+.ghRepo { padding: 2px 12px; font-weight: 600; }
+.ghDesc, .ghStats { padding: 0 12px; color: var(--muted); }
+.ghData > .gbtn { margin: 4px 12px; }
+.ghItem .gn { flex: 1 1 auto; }
+.chk-passing, .run-success { color: var(--ok); border-color: var(--ok); }
+.chk-failing, .run-failure, .run-timed_out, .run-cancelled { color: var(--bad); border-color: var(--bad); }
+.chk-pending, .run-in_progress, .run-queued { color: var(--accent); border-color: var(--accent); }
+
+/* diff + commit modals */
+.gConfirm { white-space: pre-wrap; font-family: var(--mono); font-size: 12.5px; }
+.gdModal { padding: 0; display: flex; flex-direction: column; }
+.gdBar { display: flex; gap: 4px; padding: 8px 12px 0; }
+.gdBar .gbtn.on { background: var(--sel); border-color: var(--accent); }
+.gdBox { overflow: auto; max-height: 62vh; min-height: 120px; padding: 8px 0; font: 12px/1.45 var(--mono); }
+.gdMeta { display: flex; gap: 6px; padding: 0 12px 6px; }
+.gdMeta:empty { display: none; }
+.gdNote { padding: 6px 12px; color: var(--muted); font-family: var(--segoe, inherit); }
+.gdNote.bad { color: var(--bad); }
+.gdl { display: flex; white-space: pre; min-width: max-content; }
+.gdn { width: 44px; flex: none; text-align: right; padding-right: 8px; color: #55555f; user-select: none; }
+.gdt { padding-right: 16px; }
+.gdl.add { background: color-mix(in srgb, var(--ok) 14%, var(--panel)); color: var(--ok); }
+.gdl.del { background: color-mix(in srgb, var(--bad) 14%, var(--panel)); color: var(--bad); }
+.gdl.hunk { color: var(--accent); background: var(--panel2); }
+.gdl.meta { color: var(--muted); }
+.gcHead { padding: 10px 12px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.gcMsg { white-space: pre-wrap; font-weight: 600; }
+.gcBy { color: var(--muted); font-size: 11.5px; }
+.gcWrap { display: flex; min-height: 0; }
+.gcFiles { width: 260px; flex: none; overflow: auto; max-height: 62vh; border-right: 1px solid var(--border); padding: 4px 0; }
+.gcFile.on { background: var(--sel); }
+.gcWrap .gdBox { flex: 1; min-width: 0; }

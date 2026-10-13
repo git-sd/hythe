@@ -1,0 +1,54 @@
+/* styles for the agents feature: tab strip above the chat, sidebar list, sub-agent blocks */
+.chatView { min-height: 100%; }
+
+#agentTabs { display: flex; align-items: stretch; overflow-x: auto; flex: none; background: var(--panel); border-bottom: 1px solid var(--border); min-height: 30px; }
+#agentTabs::-webkit-scrollbar { height: 0; }
+.atab { display: flex; align-items: center; gap: 7px; padding: 0 6px 0 12px; height: 30px; flex: none; max-width: 200px; cursor: pointer; color: var(--muted); border-right: 1px solid var(--border); border-top: 2px solid transparent; font-size: 12.5px; }
+.atab:hover { background: var(--hover); }
+.atab.on { background: var(--bg); color: var(--text); border-top-color: var(--accent); }
+.atab .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.atab .ax { border: 0; background: transparent; color: var(--muted); padding: 0 5px; line-height: 1; font-size: 15px; border-radius: 3px; }
+.atab .ax:hover { background: var(--border); color: var(--text); }
+.aplus { border: 0; background: transparent; color: var(--muted); padding: 0 12px; font-size: 16px; border-radius: 0; }
+.aplus:hover { background: var(--hover); color: var(--text); }
+.renameBox { width: 120px; padding: 1px 5px; font-size: 12.5px; }
+
+/* status dots: flat, solid or hollow */
+.adot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--border); border: 1px solid var(--muted); }
+.adot.working { background: var(--accent); border-color: var(--accent); }
+.adot.approval { background: transparent; border: 2px solid var(--accent); }
+.adot.queued { background: transparent; border-color: var(--muted); }
+.adot.error { background: var(--bad); border-color: var(--bad); }
+
+/* sidebar */
+.agHead { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--border); }
+.agHead button { padding: 4px 10px; font-size: 12px; }
+.agList { flex: 1; overflow-y: auto; min-height: 0; }
+.arow { padding: 7px 10px; border-bottom: 1px solid var(--border); cursor: pointer; border-left: 3px solid transparent; }
+.arow:hover { background: var(--hover); }
+.arow.on { background: var(--sel); border-left-color: var(--accent); }
+.atop { display: flex; align-items: center; gap: 7px; }
+.atop .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.amodel { flex: none; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--muted); border: 1px solid var(--border); border-radius: 3px; padding: 0 5px; }
+.asub { display: flex; gap: 8px; font-size: 12px; color: var(--muted); margin-top: 2px; min-width: 0; }
+.ast { flex: none; }
+.ast.working, .ast.approval { color: var(--accent); }
+.ast.error { color: var(--bad); }
+.apre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.abtns { display: none; gap: 4px; margin-top: 4px; }
+.arow:hover .abtns, .arow.on .abtns { display: flex; }
+.abtns button { padding: 1px 8px; font-size: 11.5px; }
+.agFoot { border-top: 1px solid var(--border); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.aset { display: flex; align-items: center; gap: 8px; }
+.aset span { flex: 1; }
+.aset input[type=number] { width: 64px; padding: 3px 6px; }
+.aset input[type=checkbox] { accent-color: var(--accent); }
+.ahint { font-size: 11px; color: var(--muted); }
+.agFoot button { align-self: flex-start; padding: 3px 10px; font-size: 12px; }
+
+/* sub-agent block nested in a delegate_task tool call */
+.tool details.sub { border-top: 1px solid var(--border); margin: 0; }
+.tool details.sub > summary { cursor: pointer; padding: 4px 12px; font-size: 12px; color: var(--muted); background: var(--panel); }
+.tool details.sub .subBody { margin: 6px 12px 6px 14px; padding-left: 10px; border-left: 2px solid var(--accent); }
+.tool details.sub .subBody .msg { margin-bottom: 8px; font-size: 13px; }
+.tool details.sub .subBody .tool { margin-bottom: 8px; }

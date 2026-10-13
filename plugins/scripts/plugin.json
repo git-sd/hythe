@@ -1,0 +1,10 @@
+{
+  "id": "scripts",
+  "name": "Project scripts",
+  "version": "1.0.0",
+  "description": "Lists the scripts of the open project (package.json, Makefile targets, pyproject.toml tasks for poe/pdm/rye/hatch) and runs one with a click. Uses installed tools only.",
+  "permissions": ["run-commands", "read-files"],
+  "commands": [
+    { "name": "scripts", "title": "List project scripts", "handler": "scripts", "output": "panel" }
+  ]
+}

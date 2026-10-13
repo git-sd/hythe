@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:;">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Faber</title>
+  <link rel="stylesheet" href="vendor/xterm.css">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="features/ui-settings.css">
+  <link rel="stylesheet" href="features/background.css">
+  <link rel="stylesheet" href="features/agents.css">
+  <link rel="stylesheet" href="features/debug.css">
+  <link rel="stylesheet" href="features/models.css">
+  <link rel="stylesheet" href="features/git.css">
+  <link rel="stylesheet" href="features/remote.css">
+  <link rel="stylesheet" href="features/plugins.css">
+</head>
+<body>
+  <!-- Login / first-run account (disabled unless REQUIRE_LOGIN is on) -->
+  <div id="login" class="overlay" hidden>
+    <form id="loginForm" class="card" autocomplete="off">
+      <div class="logo">Faber</div>
+      <p id="loginSub" class="muted"></p>
+      <input id="loginUser" placeholder="username" spellcheck="false" autocapitalize="off">
+      <input id="loginPass" type="password" placeholder="password">
+      <input id="loginPass2" type="password" placeholder="confirm password" hidden>
+      <button class="primary" type="submit" id="loginBtn">Log in</button>
+      <p id="loginErr" class="err"></p>
+      <p class="muted small">Offline. Nothing leaves this machine.</p>
+    </form>
+  </div>
+
+  <!-- First-run setup (Ollama + model) -->
+  <div id="setup" class="overlay" hidden>
+    <div class="card wide">
+      <div class="logo">Setting up Faber</div>
+      <p class="muted">One-time setup. This needs internet; after this Faber runs fully offline.</p>
+      <ol id="steps">
+        <li data-s="1">Connect to Ollama</li>
+        <li data-s="2">Download model into Ollama</li>
+      </ol>
+      <div class="bar"><i id="setupFill"></i></div>
+      <p id="setupText" class="muted small">Starting…</p>
+      <p id="setupErr" class="err"></p>
+      <button id="setupRetry" class="primary" hidden>Retry</button>
+    </div>
+  </div>
+
+  <div id="app" hidden>
+    <header>
+      <button id="toggleTree" class="ghost icon" title="Toggle sidebar">
+        <svg viewBox="0 0 16 16"><path d="M2 3h12v1.5H2zM2 7.25h12v1.5H2zM2 11.5h12V13H2z"/></svg>
+      </button>
+      <span class="logo small">Faber</span>
+      <nav id="menubar"></nav>
+      <span class="spacer"></span>
+      <span id="headerExtra"></span>
+      <button id="reloadBtn" class="ghost" hidden title="Re-read open files and the file tree from disk (F5)">Reload</button>
+      <button id="editorBtn" class="ghost" title="Toggle editor">Editor</button>
+      <button id="termBtn" class="ghost" title="Toggle terminal (Ctrl+`)">Terminal</button>
+      <button id="lockBtn" class="ghost" title="Lock" hidden>Lock</button>
+    </header>
+
+    <div class="body">
+      <nav id="rail"><div id="railTop"></div><div id="railBottom"></div></nav>
+      <aside id="side">
+        <div id="sideTabs" hidden></div>
+        <div class="sidePane" id="paneFiles">
+        <div class="sideHead">
+          <span class="sideTitle" id="folderName">No folder</span>
+          <button class="ghost icon" id="openBtn" title="Open folder">
+            <svg viewBox="0 0 16 16"><path d="M1.5 3h4.2l1.5 1.5h7.3v8.5h-13zM3 6v5.5h10V6z"/></svg>
+          </button>
+          <button class="ghost icon" id="refreshBtn" title="Reload files (F5)">
+            <svg viewBox="0 0 16 16"><path d="M8 2.5a5.5 5.5 0 1 0 5.3 7h-1.6A4 4 0 1 1 8 4c1.1 0 2.1.45 2.8 1.2L9 7h5V2l-1.9 1.9A5.48 5.48 0 0 0 8 2.5z"/></svg>
+          </button>
+          <button class="ghost icon" id="closeFolderBtn" title="Close folder">
+            <svg viewBox="0 0 16 16"><path d="M4.1 3L8 6.9 11.9 3 13 4.1 9.1 8l3.9 3.9-1.1 1.1L8 9.1 4.1 13 3 11.9 6.9 8 3 4.1z"/></svg>
+          </button>
+        </div>
+        <div id="tree"></div>
+        <div id="empty" hidden>
+          <p class="muted">No folder open.</p>
+          <button class="primary" id="emptyOpen">Open folder</button>
+          <div id="recent"></div>
+        </div>
+        <label class="sideFoot"><input type="checkbox" id="hiddenChk"> Show hidden files</label>
+        </div>
+      </aside>
+      <main>
+        <div id="chat"></div>
+        <section id="term" hidden>
+          <div id="termSplit"></div>
+          <div class="termBar">
+            <div id="termTabs"></div>
+            <button class="ghost icon" id="termNew" title="New terminal"><svg viewBox="0 0 16 16"><path d="M7.25 2h1.5v5.25H14v1.5H8.75V14h-1.5V8.75H2v-1.5h5.25z"/></svg></button>
+            <span class="spacer"></span>
+            <button class="ghost" id="termClose">Hide</button>
+          </div>
+          <div id="termHost"></div>
+        </section>
+        <div class="inputWrap">
+          <div id="slashMenu" hidden></div>
+          <textarea id="input" rows="1" placeholder="Message Faber…   / for commands · Shift+Enter for new line"></textarea>
+          <button id="sendBtn" class="primary">Send</button>
+        </div>
+        <div id="bar">
+          <button class="chip" id="chipModel" title="Model"></button>
+          <button class="chip" id="chipEffort" title="Reasoning effort"></button>
+          <button class="chip" id="chipMode" title="Permissions"></button>
+          <span class="spacer"></span>
+          <span id="scopeNote"></span>
+        </div>
+      </main>
+      <div id="split" hidden></div>
+      <section id="editor" hidden>
+        <div id="tabs"></div>
+        <div class="edBar">
+          <span id="edPath" class="muted small"></span>
+          <span class="spacer"></span>
+          <button class="ghost" id="edMention" title="Add this file to your message">Add to chat</button>
+          <button class="ghost" id="edSave" title="Save (Ctrl+S)">Save</button>
+          <button class="ghost icon" id="edHide" title="Hide editor"><svg viewBox="0 0 16 16"><path d="M4.1 3L8 6.9 11.9 3 13 4.1 9.1 8l3.9 3.9-1.1 1.1L8 9.1 4.1 13 3 11.9 6.9 8 3 4.1z"/></svg></button>
+        </div>
+        <div id="edConflict" hidden>
+          <span>This file changed on disk, but you have unsaved edits here.</span>
+          <span class="spacer"></span>
+          <button id="edReload">Load disk version</button>
+          <button id="edKeep">Keep mine</button>
+        </div>
+        <div id="edBody" hidden>
+          <pre id="edGutter"></pre>
+          <div id="edWrap"><div id="edFlash"></div><pre id="edHl"></pre><textarea id="edText" spellcheck="false" wrap="off" autocomplete="off"></textarea></div>
+        </div>
+        <div id="edEmpty">Click a file in the sidebar to open it here.</div>
+      </section>
+    </div>
+  </div>
+  <div id="pop" hidden></div>
+  <script src="faber.js"></script>
+  <script src="vendor/xterm.js"></script>
+  <script src="vendor/addon-fit.js"></script>
+  <script src="app.js"></script>
+  <script src="editor.js"></script>
+  <script src="terminal.js"></script>
+  <script src="menubar.js"></script>
+  <script src="search.js"></script>
+  <script src="features/ui-settings.js"></script>
+  <script src="features/background.js"></script>
+  <script src="features/agents.js"></script>
+  <script src="features/debug.js"></script>
+  <script src="features/models.js"></script>
+  <script src="features/git.js"></script>
+  <script src="features/remote.js"></script>
+  <script src="features/plugins.js"></script>
+  <script src="start.js"></script>
+</body>
+</html>

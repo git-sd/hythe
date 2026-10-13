@@ -1,0 +1,40 @@
+/* styles for the remote feature. Flat, solid colours only. Warning colour is local to this feature. */
+.rmPanel, .rmHead, .rmInd, .rmWarnBox { --rm-warn: #f59e0b; --rm-warn-text: #1a1200; }
+.rmPanel { overflow: auto; padding: 8px; font-size: 13px; }
+.rmHead { border: 1px solid var(--border); background: var(--panel2); border-radius: 4px; padding: 10px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.rmHead.on { border-color: var(--rm-warn); background: var(--rm-warn); color: var(--rm-warn-text); }
+.rmHead.on .rmHint { color: var(--rm-warn-text); }
+.rmHeadTitle { font-weight: 600; }
+.rmBlock { margin-bottom: 8px; }
+.rmBlockTitle { font-weight: 600; margin: 4px 0; }
+.rmSec { border-top: 1px solid var(--border); padding: 4px 0; }
+.rmSec > summary { cursor: pointer; padding: 6px 0; font-weight: 600; }
+.rmBody { padding: 4px 0 8px; display: flex; flex-direction: column; gap: 8px; }
+.rmHint { color: var(--muted); font-size: 12px; }
+.rmBad { color: var(--bad); font-size: 12px; margin: 4px 0; }
+.rmItem { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; margin: 4px 0; }
+.rmItemName { word-break: break-all; }
+.rmBtns, .rmRow { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 4px; }
+.rmBtns button, .rmRow button { padding: 3px 8px; }
+.rmField { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
+.rmLabel { font-size: 12px; color: var(--muted); }
+.rmCheck { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; margin: 3px 0; }
+.rmCheck input { margin-top: 3px; }
+.rmResult { font-size: 12px; padding: 0; word-break: break-word; }
+.rmResult.ok { color: var(--ok); padding: 4px 0; }
+.rmResult.bad { color: var(--bad); padding: 4px 0; }
+.rmCode { display: flex; align-items: flex-start; gap: 4px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 4px; }
+.rmCode pre { flex: 1; margin: 0; white-space: pre-wrap; word-break: break-all; font: 11px var(--mono); user-select: text; }
+.rmWarnBox { background: var(--rm-warn); color: var(--rm-warn-text); padding: 8px 10px; border-radius: 4px; margin-bottom: 10px; font-size: 13px; }
+.rmList { margin: 4px 0 8px 18px; padding: 0; }
+.rmLog { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 8px; max-height: 320px; overflow: auto; font: 12px var(--mono); white-space: pre-wrap; margin: 6px 0 0; user-select: text; }
+.rmFetch { max-height: 320px; overflow: auto; margin: 6px 0; }
+.rmSpace { height: 6px; }
+.rmScan { font-size: 12px; }
+.rmPanel textarea { width: 100%; resize: vertical; }
+.rmPanel input:not([type=checkbox]), .rmPanel select { width: 100%; }
+.rmInd { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; }
+.rmInd button { padding: 2px 8px; font-size: 12px; border-color: var(--rm-warn); }
+.rmInd.on .rmIndTxt { background: var(--rm-warn); color: var(--rm-warn-text); font-weight: 600; }
+.rmInd.offer .rmIndTxt { background: transparent; color: var(--rm-warn); }
+.rmInd .rmBack { background: var(--panel2); color: var(--text); }

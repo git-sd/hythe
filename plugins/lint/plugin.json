@@ -1,0 +1,52 @@
+{
+  "id": "lint",
+  "name": "Lint",
+  "version": "1.0.0",
+  "description": "Run the linters and type checkers that are already installed: eslint (project), ruff or flake8, golangci-lint or go vet, and tsc --noEmit when a tsconfig.json exists. Results show in the panel with clickable file:line locations. Nothing is downloaded.",
+  "permissions": ["run-commands"],
+  "commands": [
+    {
+      "name": "lint_file",
+      "title": "Lint current file",
+      "scope": "file",
+      "output": "panel",
+      "cwd": "file-dir",
+      "appliesTo": ["js", "jsx", "mjs", "cjs", "ts", "tsx", "vue", "py", "go"],
+      "candidates": [
+        { "label": "eslint", "appliesTo": ["js", "jsx", "mjs", "cjs", "ts", "tsx", "vue"], "hint": "add eslint to the project's devDependencies with npm", "cwd": "workspace", "run": "{bin:eslint} --no-color {file}" },
+        { "label": "ruff", "appliesTo": ["py"], "hint": "pip install ruff", "run": "{bin:ruff} check {file}" },
+        { "label": "ruff (python module)", "appliesTo": ["py"], "requires": ["py:ruff"], "hint": "pip install ruff", "run": "{py} -m ruff check {file}" },
+        { "label": "flake8", "appliesTo": ["py"], "hint": "pip install flake8", "run": "{bin:flake8} {file}" },
+        { "label": "flake8 (python module)", "appliesTo": ["py"], "requires": ["py:flake8"], "hint": "pip install flake8", "run": "{py} -m flake8 {file}" },
+        { "label": "golangci-lint", "appliesTo": ["go"], "hint": "install golangci-lint", "run": "{bin:golangci-lint} run ." },
+        { "label": "go vet", "appliesTo": ["go"], "hint": "install Go from go.dev", "run": "{bin:go} vet ." }
+      ]
+    },
+    {
+      "name": "lint",
+      "title": "Lint open folder",
+      "scope": "folder",
+      "output": "panel",
+      "timeoutSec": 300,
+      "candidates": [
+        { "label": "eslint", "detect": ["file:package.json", "file:eslint.config.js|eslint.config.mjs|eslint.config.cjs|eslint.config.ts|.eslintrc|.eslintrc.js|.eslintrc.cjs|.eslintrc.json|.eslintrc.yml|.eslintrc.yaml"], "hint": "add eslint to the project's devDependencies with npm", "run": "{bin:eslint} --no-color ." },
+        { "label": "ruff", "detect": ["file:pyproject.toml|ruff.toml|.ruff.toml|setup.py|setup.cfg|requirements.txt|*.py"], "hint": "pip install ruff", "run": "{bin:ruff} check ." },
+        { "label": "ruff (python module)", "detect": ["file:pyproject.toml|ruff.toml|.ruff.toml|setup.py|setup.cfg|requirements.txt|*.py"], "requires": ["py:ruff"], "hint": "pip install ruff", "run": "{py} -m ruff check ." },
+        { "label": "flake8", "detect": ["file:pyproject.toml|setup.py|setup.cfg|tox.ini|requirements.txt|*.py"], "hint": "pip install flake8", "run": "{bin:flake8} ." },
+        { "label": "flake8 (python module)", "detect": ["file:pyproject.toml|setup.py|setup.cfg|tox.ini|requirements.txt|*.py"], "requires": ["py:flake8"], "hint": "pip install flake8", "run": "{py} -m flake8 ." },
+        { "label": "golangci-lint", "detect": ["file:go.mod"], "hint": "install golangci-lint", "run": "{bin:golangci-lint} run ./..." },
+        { "label": "go vet", "detect": ["file:go.mod"], "hint": "install Go from go.dev", "run": "{bin:go} vet ./..." }
+      ]
+    },
+    {
+      "name": "typecheck",
+      "title": "Type-check (tsc --noEmit)",
+      "scope": "folder",
+      "output": "panel",
+      "timeoutSec": 300,
+      "candidates": [
+        { "label": "tsc", "detect": ["file:tsconfig.json"], "hint": "add typescript to the project's devDependencies with npm", "run": "{bin:tsc} --noEmit --pretty false -p ." }
+      ]
+    }
+  ]
+}

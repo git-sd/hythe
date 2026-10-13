@@ -1,0 +1,10 @@
+{
+  "id": "devtools",
+  "name": "Developer utilities",
+  "version": "1.0.0",
+  "description": "An offline toolbox: regex tester, JSON formatter and path query, Base64 / URL / HTML-entity converters, UUID and ULID generator, hash calculator (md5, sha1, sha256 of text or a file), JWT decoder (decode only, never verified), epoch converter, colour converter and a text diff.",
+  "permissions": ["read-files"],
+  "commands": [
+    { "name": "devtools", "title": "Open developer utilities", "handler": "ui:devtools", "output": "panel" }
+  ]
+}

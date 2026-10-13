@@ -1,0 +1,18 @@
+/* feature: background. Status chip in the bottom bar + its settings section. */
+.bgStatus { margin-left: auto; flex: none; }
+#scopeNote + .bgStatus { margin-left: 8px; }
+.bgStatus .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+.bgStatus.ok .dot { background: var(--ok); }
+.bgStatus.down .dot { background: var(--bad); }
+.bgRow { display: flex; align-items: center; gap: 18px; padding: 11px 0; border-bottom: 1px solid var(--border); }
+.bgRow .t { flex: 1; min-width: 0; }
+.bgRow label { display: block; font-weight: 500; }
+.bgRow .d { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.bgRow input[type="number"] { width: 74px; text-align: right; padding: 4px 6px; }
+.bgRow input[type="range"] { width: 170px; accent-color: var(--accent); }
+.bgRow .ctl { display: flex; align-items: center; gap: 8px; flex: none; }
+.bgSw { width: 40px; height: 22px; padding: 0; position: relative; border: 1px solid var(--border); background: var(--panel2); }
+.bgSw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; background: var(--muted); }
+.bgSw[aria-checked="true"] { background: var(--accent); border-color: var(--accent); }
+.bgSw[aria-checked="true"]::after { left: 21px; background: var(--on-accent, #fff); }
+.bgInfo { margin: 12px 0 0; color: var(--muted); white-space: pre-wrap; }

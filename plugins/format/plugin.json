@@ -1,0 +1,58 @@
+{
+  "id": "format",
+  "name": "Format",
+  "version": "1.0.0",
+  "description": "Format the current file or the open folder with a formatter that is already installed on this computer: prettier (project or PATH), black, ruff, gofmt, rustfmt, clang-format or dotnet format. Nothing is ever downloaded or installed.",
+  "permissions": ["run-commands", "write-files", "ai-tools"],
+  "commands": [
+    {
+      "name": "format",
+      "title": "Format current file",
+      "scope": "file",
+      "writes": true,
+      "output": "panel",
+      "appliesTo": ["js", "jsx", "mjs", "cjs", "ts", "tsx", "json", "jsonc", "css", "scss", "less", "html", "vue", "md", "yaml", "yml", "py", "pyi", "go", "rs", "c", "h", "cc", "cpp", "cxx", "hpp", "hh", "cs", "vb", "fs"],
+      "candidates": [
+        { "label": "prettier", "appliesTo": ["js", "jsx", "mjs", "cjs", "ts", "tsx", "json", "jsonc", "css", "scss", "less", "html", "vue", "md", "yaml", "yml"], "hint": "add prettier to the project's devDependencies with npm", "run": "{bin:prettier} --write {file}" },
+        { "label": "black", "appliesTo": ["py", "pyi"], "hint": "pip install black", "run": "{bin:black} {file}" },
+        { "label": "black (python module)", "appliesTo": ["py", "pyi"], "requires": ["py:black"], "hint": "pip install black", "run": "{py} -m black {file}" },
+        { "label": "ruff format", "appliesTo": ["py", "pyi"], "hint": "pip install ruff", "run": "{bin:ruff} format {file}" },
+        { "label": "ruff format (python module)", "appliesTo": ["py", "pyi"], "requires": ["py:ruff"], "hint": "pip install ruff", "run": "{py} -m ruff format {file}" },
+        { "label": "gofmt", "appliesTo": ["go"], "hint": "install Go from go.dev", "run": "{bin:gofmt} -w {file}" },
+        { "label": "rustfmt", "appliesTo": ["rs"], "hint": "rustup component add rustfmt", "run": "{bin:rustfmt} --edition 2021 {file}" },
+        { "label": "clang-format", "appliesTo": ["c", "h", "cc", "cpp", "cxx", "hpp", "hh"], "hint": "install LLVM / clang-format", "run": "{bin:clang-format} -i {file}" },
+        { "label": "dotnet format", "appliesTo": ["cs", "vb", "fs"], "detect": ["file:*.sln|*.csproj|*.vbproj|*.fsproj"], "requires": ["sdk:dotnet"], "hint": "install the .NET SDK", "run": "{bin:dotnet} format --no-restore --include {rel}" }
+      ]
+    },
+    {
+      "name": "format_folder",
+      "title": "Format open folder",
+      "scope": "folder",
+      "writes": true,
+      "output": "panel",
+      "timeoutSec": 300,
+      "candidates": [
+        { "label": "prettier", "detect": ["file:package.json"], "hint": "add prettier to the project's devDependencies with npm", "run": "{bin:prettier} --write {folder}" },
+        { "label": "black", "detect": ["file:pyproject.toml|setup.py|setup.cfg|requirements.txt|*.py"], "hint": "pip install black", "run": "{bin:black} {folder}" },
+        { "label": "black (python module)", "detect": ["file:pyproject.toml|setup.py|setup.cfg|requirements.txt|*.py"], "requires": ["py:black"], "hint": "pip install black", "run": "{py} -m black {folder}" },
+        { "label": "ruff format", "detect": ["file:pyproject.toml|setup.py|setup.cfg|requirements.txt|*.py"], "hint": "pip install ruff", "run": "{bin:ruff} format {folder}" },
+        { "label": "gofmt", "detect": ["file:go.mod"], "hint": "install Go from go.dev", "run": "{bin:gofmt} -w {folder}" },
+        { "label": "cargo fmt", "detect": ["file:Cargo.toml"], "hint": "rustup component add rustfmt", "run": "{bin:cargo} fmt" },
+        { "label": "dotnet format", "detect": ["file:*.sln|*.csproj|*.vbproj|*.fsproj"], "requires": ["sdk:dotnet"], "hint": "install the .NET SDK", "run": "{bin:dotnet} format --no-restore" }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "name": "format_file",
+      "description": "Format one file in place with the formatter installed for the project (prettier, black, ruff, gofmt, rustfmt, clang-format, dotnet format). Fails with a clear message if no formatter is installed. Never installs anything.",
+      "effect": "write",
+      "command": "format",
+      "parameters": {
+        "type": "object",
+        "properties": { "path": { "type": "string", "format": "path", "description": "File to format (relative to the project folder)" } },
+        "required": ["path"]
+      }
+    }
+  ]
+}
