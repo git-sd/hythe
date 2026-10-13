@@ -121,4 +121,40 @@ function createLine(opts = {}) {
   };
 }
 
-module.exports = { createLine, verify, hashOf, KINDS, GENESIS };
+/*
+  Turns an agent's event stream (src/agent.js) into trace entries: reasoning, text said before a tool call, every tool
+  call with its arguments, every tool result, token usage and errors. The final reply is NOT logged here: it is the
+  RESULT of the request (line.request) so it appears exactly once.
+  def = { name, model }. Returns function(ev).
+*/
+function agentEventLogger(line, def) {
+  const buf = { thinking: '', say: '' };
+  const flush = () => {
+    if (buf.thinking.trim()) line.log({ from: def.name, to: 'owner', kind: 'thought', model: def.model, text: buf.thinking.trim(), meta: { channel: 'thinking' } });
+    if (buf.say.trim()) line.log({ from: def.name, to: 'owner', kind: 'thought', model: def.model, text: buf.say.trim(), meta: { channel: 'say' } });
+    buf.thinking = ''; buf.say = '';
+  };
+  return (ev) => {
+    switch (ev.type) {
+      case 'thinking': buf.thinking += ev.text; break;
+      case 'token': buf.say += ev.text; break;
+      case 'tool_start': case 'turn_end':
+        flush();
+        if (ev.type === 'tool_start') line.log({ from: def.name, to: 'tools', kind: 'tool', model: def.model, text: `${ev.name} ${typeof ev.args === 'string' ? ev.args : JSON.stringify(ev.args)}`, meta: { call: ev.id } });
+        break;
+      case 'tool_result': line.log({ from: 'tools', to: def.name, kind: 'tool-result', model: def.model, text: String(ev.output == null ? '' : ev.output), meta: { ok: ev.ok, call: ev.id } }); break;
+      case 'usage': line.log({ from: def.name, to: 'owner', kind: 'usage', model: ev.model || def.model, text: `${ev.model || def.model}: ${ev.prompt} prompt + ${ev.eval} generated tokens${ev.tps ? ', ' + ev.tps + ' tokens/s' : ''}, ${(ev.ms / 1000).toFixed(1)}s`, meta: { prompt: ev.prompt, eval: ev.eval, tps: ev.tps, ms: ev.ms } }); break;
+      case 'notice': line.log({ from: def.name, to: 'owner', kind: 'system', model: def.model, text: ev.text }); break;
+      case 'error': flush(); line.log({ from: def.name, to: 'owner', kind: 'error', model: def.model, text: ev.message }); break;
+      case 'done': buf.say = ''; flush(); break;
+      default: break;
+    }
+  };
+}
+
+// One line per process, shared by every multi-agent feature, so the owner sees ALL agent traffic in one place.
+let sharedLine = null;
+const shared = (opts) => (sharedLine ||= createLine(opts || {}));
+const resetShared = (opts) => { sharedLine = createLine(opts || {}); return sharedLine; };
+
+module.exports = { createLine, verify, hashOf, KINDS, GENESIS, agentEventLogger, shared, resetShared };

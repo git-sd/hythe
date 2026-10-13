@@ -138,6 +138,7 @@ module.exports = function (ctx) {
   function emitFor(s, ev) {
     record(s, ev);
     ctx.send('feat:agents:event', ev);
+    bus.emit('agent-event', { session: s.id, name: s.name, model: s.model, ev });
     if (ev.sub) return;
     if (ev.type === 'token') s.cur += ev.text;
     if (ev.type === 'turn_end' || ev.type === 'tool_start' || ev.type === 'done' || ev.type === 'error') {

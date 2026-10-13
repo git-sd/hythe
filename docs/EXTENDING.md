@@ -86,6 +86,22 @@ a tool with `when` is only offered to agents for which it returns true. `ctx.too
 feature veto `write_file` / `edit_file` (team file claims); it does NOT cover `run_command`. A session can have a restricted tool list
 (`allowedTools`) and extra system text (`teamSystem`).
 
+## Multi-agent orchestration, the communication line, CPU tuning
+
+- `src/comms.js`: THE communication line. Anything that makes agents talk (orchestrator, team mode, future features) must do it
+  through `line.request(from, {name, model, run}, text)` (logs the task, runs the agent, logs the reply or error) and log other
+  traffic with `line.log({from, to, kind, text})`. `agentEventLogger(line, def)` turns an agent's event stream into entries (reasoning,
+  tool calls with arguments, tool results, tokens). Entries are hash-chained (`verify()`), kept in memory, in a JSONL file and
+  shown live in the Trace dock panel. `comms.shared()` is the one line per process. Never add a side channel between agents.
+- `src/orchestrator.js`: conductor -> JSON plan -> steps on specialist agents (each its own model) -> reviewer verdict + rework -> final
+  answer. Plain Node (no Electron): the same code runs in the app (`src/features/orchestra.js`) and from `tools/orchestra-cli.js`.
+  Agents take turns per agent; `concurrency` (default 1, the right value for a CPU) bounds how many models run at once.
+- `src/model-roster.js`: role -> model from what is installed (code specialist, smallest tool-capable model as the speed helper,
+  a reviewer different from the coder), with optional download SUGGESTIONS (never installed automatically).
+- `src/cpu-tune.js`: core detection, profile (threads, context, mmap, keep_alive, Ollama env vars), quantization advice, `benchmark()`
+  and `autoTune()` against Ollama. Estimates are labelled estimates; the benchmark measures the real speed.
+- Command line: `node tools/orchestra-cli.js run "<task>" | roster | tune --model M [--autotune] | demo`.
+
 ## Online provider (Claude)
 
 `src/claude.js` maps `claude:<model-id>` models to the Anthropic Messages API (streaming, tool use, thinking blocks replayed with
@@ -128,7 +144,11 @@ and a fake PTY. It works on Linux and Windows and needs no display. Run: `NODE_P
     tests/web/layout-regress.js   port of layout-scroll-smoke (the page never scrolls)
     tests/web/dock-gui.js         drag to dock, stacking, editor groups, save/restore layouts
     tests/web/panes-gui.js  team-gui.js  team-main.js  claude-gui.js  resources-gui.js
-    tests/claude-unit.js  team-unit.js  resources-unit.js     plain Node, no browser
+    tests/web/orchestra-gui.js    Orchestra tab + Trace panel: four models, filters, verify, export, approvals, stop
+    tests/claude-unit.js  team-unit.js  resources-unit.js  comms-unit.js  cpu-tune-unit.js  orchestrator-unit.js  cli-unit.js
+                                  plain Node, no browser. fake-models.js = four scripted models behind one fake Ollama.
+    tests/orchestration-demo.js   prints a full multi-agent trace to the console (node tests/orchestration-demo.js)
+    tests/web/run-all.js          runs everything above, one process per file
 
 NOT covered by the harness: Electron itself (real window, zoom, native dialogs, real PowerShell PTY, GPU). Those still need the
 Electron smoke tests below, run on Windows.

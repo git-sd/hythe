@@ -156,18 +156,7 @@ module.exports = function (ctx) {
 
   /* ---------- CPU optimisation (src/cpu-tune.js) ---------- */
   let cpuCache = null;
-  function run(cmd, args) {
-    return new Promise((resolve) => execFile(cmd, args, { timeout: 6000, windowsHide: true }, (err, out) => resolve(err ? '' : String(out))));
-  }
-  // Ask the OS for the real physical core count; fall back to a guess from os.cpus().
-  async function detectCpu() {
-    if (cpuCache) return cpuCache;
-    let c = null;
-    if (process.platform === 'win32') c = tune.parseCim(await run('powershell.exe', ['-NoProfile', '-Command', 'Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores,NumberOfLogicalProcessors | ConvertTo-Json -Compress']));
-    else if (process.platform === 'linux') c = tune.parseLscpu(await run('lscpu', []));
-    cpuCache = c || tune.guessCores(os.cpus());
-    return cpuCache;
-  }
+  const detectCpu = async () => (cpuCache ||= await tune.detectCpu({ os }));
   async function cpuProfile(name, opt = {}) {
     const f = await modelFacts(name);
     const [cpu, s] = await Promise.all([detectCpu(), sample()]);

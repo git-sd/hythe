@@ -6,6 +6,7 @@
 // Event: feat:team:state (the whole public state, throttled).
 const bus = require('../bus');
 const T = require('../team-lib');
+const comms = require('../comms');
 
 const BOARD_TOOLS = ['board_read', 'board_add_task', 'board_update_task', 'board_note', 'board_message', 'claim_files', 'release_files', 'finish_work'];
 const READ = ['read_file', 'list_dir', 'search_files', 'git_status', 'git_diff'];
@@ -26,6 +27,7 @@ module.exports = function (ctx) {
   let team = null;
   let pushT = null, saveT = null;
 
+  const line = () => comms.shared();
   const ws = () => ctx.workspace();
   const rel = (p) => { const w = ws(); return w && String(p).toLowerCase().startsWith(w.toLowerCase()) ? path.relative(w, p) || '.' : p; };
   const clean = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
@@ -84,7 +86,15 @@ module.exports = function (ctx) {
   const who = (tctx) => { const m = memberBySid(tctx.agent && tctx.agent.id); if (!m) throw new Error('You are not part of a team.'); return m; };
   const paths = (v) => String(v || '').split(/[\n,;]+/).map((x) => x.trim()).filter(Boolean);
   const abs = (p) => path.resolve(ws() || '.', p);
-  const reg = (schema, impl) => ctx.tools.registerTool(schema, async (a, tctx) => { const m = who(tctx); const r = await impl(a || {}, m); push(); return r; }, { when: forMember });
+  // every board action is a message on the line: who did what to the shared board, with the arguments
+  const reg = (schema, impl) => ctx.tools.registerTool(schema, async (a, tctx) => {
+    const m = who(tctx);
+    const name = schema.function.name;
+    const r = await impl(a || {}, m);
+    line().log({ from: m.name, to: name === 'board_message' ? String((a || {}).to || 'all') : 'board', kind: 'board', model: m.model, text: `${name} ${JSON.stringify(a || {})}\n=> ${typeof r === 'string' ? r.split('\n')[0] : ''}`.trim() });
+    push();
+    return r;
+  }, { when: forMember });
 
   reg(fn('board_read', 'Show the team board: tasks, file claims, recent notes, and messages addressed to you.', {}, []), (a, m) => {
     const inbox = team.board.inbox(m.name);
@@ -131,6 +141,16 @@ module.exports = function (ctx) {
     if (!owner) { team.board.claim(m.name, [file]); push(); }
   });
 
+  // the members' own activity (reasoning, tool calls, tokens) goes on the line too
+  const loggers = new Map();      // sid -> logger
+  bus.on('agent-event', ({ session, ev }) => {
+    const m = memberBySid(session);
+    if (!m || !live()) return;
+    let lg = loggers.get(session);
+    if (!lg || lg.model !== m.model) { lg = { model: m.model, fn: comms.agentEventLogger(line(), m) }; loggers.set(session, lg); }
+    lg.fn(ev);
+  });
+
   /* ---------- running ---------- */
   const snapshot = (label) => {
     const b = team.board;
@@ -145,7 +165,7 @@ module.exports = function (ctx) {
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; bus.agents.stop(m.sid); }, team.roundTimeoutSec * 1000);
     let r;
-    try { r = await bus.agents.run(m.sid, prompt); } catch (e) { r = { error: e.message }; } finally { clearTimeout(timer); }
+    try { r = await line().request('team', { name: m.name, model: m.model, run: (t) => bus.agents.run(m.sid, t) }, prompt, { round: team.round }); } catch (e) { r = { error: e.message }; } finally { clearTimeout(timer); }
     if (r.error) { m.status = 'error'; team.board.addNote('system', `${m.name} stopped with an error: ${r.error}`); }
     else if (r.stopped) { m.status = timedOut ? 'timeout' : 'stopped'; if (timedOut) team.board.addNote('system', `${m.name} ran out of time (${team.roundTimeoutSec}s) in round ${team.round}.`); }
     else m.status = 'idle';
@@ -192,7 +212,7 @@ module.exports = function (ctx) {
         let text = '';
         if (head && bus.agents.has(head.sid)) {
           head.status = 'working'; push();
-          const r = await bus.agents.run(head.sid, T.summaryPrompt(t.task, t.board, rel)).catch((e) => ({ error: e.message }));
+          const r = await line().request('team', { name: head.name, model: head.model, run: (x) => bus.agents.run(head.sid, x) }, T.summaryPrompt(t.task, t.board, rel), { replyKind: 'final' }).catch((e) => ({ error: e.message }));
           text = r.error ? '' : String(r.text || '').trim();
           head.status = 'idle';
         }
@@ -259,6 +279,8 @@ module.exports = function (ctx) {
       }
     } catch (e) { for (const m of t.members) bus.agents.close(m.sid); throw e; }
     team = t;
+    line().startRun('team: ' + task.slice(0, 70));
+    line().log({ from: 'team', to: 'all', kind: 'system', text: `team started: ${t.members.map((m) => `${m.name} (${m.role}, ${m.model})`).join('; ')}` });
     push();
     drive();
     return publicState();

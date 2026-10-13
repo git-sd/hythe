@@ -72,6 +72,25 @@ const { launch, checker, sleep } = require('./harness');
     check('claims released when done', fin.board.claims.length === 0, fin.board.claims);
     check('checkpoints taken (plan, round, summary)', fin.checkpoints.length >= 3 && fin.checkpoints[0].label === 'plan', fin.checkpoints);
 
+    // ---- transparency: team mode talks through the same communication line ----
+    const tr = await I('feat:trace:list', 0, 5000);
+    const TE = tr.entries;
+    const taskTexts = new Set(TE.filter((e) => e.kind === 'task').map((e) => e.text));
+    const toolTexts = new Set(TE.filter((e) => e.kind === 'tool-result').map((e) => e.text));
+    let missPrompts = 0, missTools = 0, nPrompts = 0, nTools = 0;
+    for (const r of fake.requests) for (const m of r.messages) {
+      if (m.role === 'user') { nPrompts++; if (!taskTexts.has(m.content)) missPrompts++; }
+      if (m.role === 'tool') { nTools++; if (!toolTexts.has(m.content)) missTools++; }
+    }
+    check('team: EVERY prompt a member model received is in the trace, word for word', nPrompts > 5 && missPrompts === 0, { nPrompts, missPrompts });
+    check('team: EVERY tool result a member received is in the trace', nTools > 5 && missTools === 0, { nTools, missTools });
+    check('team: prompts are logged as team -> member tasks with the member\'s model', TE.some((e) => e.kind === 'task' && e.from === 'team' && e.to === 'Coder' && e.model === 'qwen3.5:9b'));
+    check('team: board actions (tasks, messages, finish) are on the line', ['board_add_task', 'board_message', 'finish_work', 'board_update_task'].every((n) => TE.some((e) => e.kind === 'board' && e.text.startsWith(n))));
+    check('team: the board message shows sender, receiver and text', TE.some((e) => e.kind === 'board' && e.from === 'Coder2' && e.to === 'Coder' && /shared\.txt please/.test(e.text)));
+    check('team: the final summary is on the line as FINAL', TE.some((e) => e.kind === 'final' && /SUMMARY: hello\.txt/.test(e.text)));
+    check('team: a denied/claimed write shows up as a tool result', TE.some((e) => e.kind === 'tool-result' && /is claimed by/.test(e.text)));
+    check('team: the whole trace verifies (memory and file)', (await I('feat:trace:verify')).memory.ok && (await I('feat:trace:verify')).file.ok);
+
     // tools not offered to non-members
     const normal = fake.requests.filter((r) => /Faber, an offline/.test(r.system || '') && !/TEAM MODE/.test(r.system || ''));
     check('board tools are NOT offered to ordinary agents', normal.every((r) => !r.tools.includes('board_read')) );

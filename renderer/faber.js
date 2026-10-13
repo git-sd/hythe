@@ -39,10 +39,11 @@ window.Faber = (() => {
     plugins: '<rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><path d="M16.5 13v7M13 16.5h7"/>',
     debug: '<path d="M9 7a3 3 0 0 1 6 0"/><rect x="7" y="7" width="10" height="12" rx="5"/><path d="M12 10v9M3 12h4M17 12h4M4 7l3 2M20 7l-3 2M4 19l3-2M20 19l-3-2"/>',
     team: '<circle cx="12" cy="6" r="2.5"/><circle cx="5" cy="17" r="2.5"/><circle cx="19" cy="17" r="2.5"/><path d="M12 8.5v3.5M12 12l-5.5 3M12 12l5.5 3"/>',
+    orchestra: '<circle cx="12" cy="12" r="2.5"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="M10.2 10.4L6.6 7.4M13.8 10.4l3.6-3M10.2 13.6l-3.6 3M13.8 13.6l3.6 3"/>',
     settings: '<circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/>',
     other: '<rect x="5" y="5" width="14" height="14" rx="2"/>',
   };
-  const RAIL_ORDER = ['files', 'search', 'git', 'agents', 'team', 'models', 'remote', 'plugins', 'debug'];
+  const RAIL_ORDER = ['files', 'search', 'git', 'agents', 'team', 'orchestra', 'models', 'remote', 'plugins', 'debug'];
   const svg = (inner) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' + inner + '</svg>';
 
   function ensureFiles() {

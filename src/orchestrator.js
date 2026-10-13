@@ -7,6 +7,7 @@
 // Plain Node: no Electron. It talks to Ollama through src/agent.js, so it runs the same in the app and from the CLI.
 const { createAgent } = require('./agent');
 const { ROLES } = require('./model-roster');
+const { agentEventLogger } = require('./comms');
 
 const READ = ['read_file', 'list_dir', 'search_files'];
 const ROLE_TOOLS = {
@@ -95,36 +96,10 @@ function createOrchestrator(opts) {
 
   let stopped = false;
   const runtime = new Map();      // name -> { name, role, model, agent }
-  const thought = new Map();      // name -> { thinking, say }
   const listeners = new Set();
   const emitState = (st) => { for (const f of listeners) { try { f(st); } catch { /* ignore */ } } };
 
   /* ----- one agent ----- */
-  function flush(name, model) {
-    const b = thought.get(name);
-    if (!b) return;
-    if (b.thinking.trim()) line.log({ from: name, to: 'owner', kind: 'thought', model, text: b.thinking.trim(), meta: { channel: 'thinking' } });
-    if (b.say.trim()) line.log({ from: name, to: 'owner', kind: 'thought', model, text: b.say.trim(), meta: { channel: 'say' } });
-    b.thinking = ''; b.say = '';
-  }
-  function onEvent(def, ev) {
-    const b = thought.get(def.name) || thought.set(def.name, { thinking: '', say: '' }).get(def.name);
-    switch (ev.type) {
-      case 'thinking': b.thinking += ev.text; break;
-      case 'token': b.say += ev.text; break;
-      case 'tool_start': case 'turn_end': {
-        flush(def.name, def.model);
-        if (ev.type === 'tool_start') line.log({ from: def.name, to: 'tools', kind: 'tool', model: def.model, text: `${ev.name} ${typeof ev.args === 'string' ? ev.args : JSON.stringify(ev.args)}`, meta: { call: ev.id } });
-        break;
-      }
-      case 'tool_result': line.log({ from: 'tools', to: def.name, kind: 'tool-result', model: def.model, text: String(ev.output == null ? '' : ev.output), meta: { ok: ev.ok, call: ev.id } }); break;
-      case 'usage': line.log({ from: def.name, to: 'owner', kind: 'usage', model: ev.model, text: `${ev.model}: ${ev.prompt} prompt + ${ev.eval} generated tokens${ev.tps ? ', ' + ev.tps + ' tokens/s' : ''}, ${(ev.ms / 1000).toFixed(1)}s`, meta: { prompt: ev.prompt, eval: ev.eval, tps: ev.tps, ms: ev.ms } }); break;
-      case 'notice': line.log({ from: def.name, to: 'owner', kind: 'system', model: def.model, text: ev.text }); break;
-      case 'error': flush(def.name, def.model); line.log({ from: def.name, to: 'owner', kind: 'error', model: def.model, text: ev.message }); break;
-      case 'done': b.say = ''; flush(def.name, def.model); break;    // the final reply is logged as the RESULT of the request
-      default: break;
-    }
-  }
   async function approveFor(def, kind, title, detail) {
     line.log({ from: def.name, to: 'owner', kind: 'question', model: def.model, text: `${title}\n${detail || ''}`.trim(), meta: { approval: kind } });
     let ok;
@@ -140,7 +115,7 @@ function createOrchestrator(opts) {
       allowedTools: ROLE_TOOLS[def.role] || READ,
       getSettings: () => ({ host, model: def.model, effort: def.effort || effort, mode, hasFolder: !!workspace, workspace: workspace || '', sandbox: true, numCtx, features, extraSystem: system }),
       approve: (kind, title, detail) => (kind === 'edit' && mode !== 'ask' ? Promise.resolve(true) : approveFor(def, kind, title, detail)),
-      emit: (ev) => onEvent(def, ev),
+      emit: agentEventLogger(line, def),
     });
     const rt = { name: def.name, role: def.role, model: def.model, agent };
     // what line.request() needs

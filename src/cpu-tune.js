@@ -40,6 +40,17 @@ function parseCim(text) {
   return { physical: cores, logical, smt: logical > cores, source: 'windows', model: String((list[0] && list[0].Name) || '').trim() };
 }
 
+// Ask the OS for the real physical core count (PowerShell on Windows, lscpu on Linux); fall back to the guess.
+function detectCpu({ os = require('os'), execFile = require('child_process').execFile, platform = process.platform } = {}) {
+  const run = (cmd, args) => new Promise((resolve) => execFile(cmd, args, { timeout: 6000, windowsHide: true }, (err, out) => resolve(err ? '' : String(out))));
+  return (async () => {
+    let c = null;
+    if (platform === 'win32') c = parseCim(await run('powershell.exe', ['-NoProfile', '-Command', 'Get-CimInstance Win32_Processor | Select-Object Name,NumberOfCores,NumberOfLogicalProcessors | ConvertTo-Json -Compress']));
+    else if (platform === 'linux') c = parseLscpu(await run('lscpu', []));
+    return c || guessCores(os.cpus());
+  })();
+}
+
 /* ---------- speed estimate ---------- */
 // tokens/s ~ usable memory bandwidth / bytes read per token. Usable bandwidth for a typical laptop or desktop: 25-50 GB/s.
 function estimateTokPerSec(weightsBytes, bandwidthGBs = [25, 50]) {
@@ -173,4 +184,4 @@ async function autoTune({ host, model, cpu, base = {}, candidates, numPredict = 
   return { ok: true, best: { threads: best.threads, tokPerSec: best.tokPerSec }, table, gainVsWorst: Math.round((top / Math.min(...good.map((t) => t.tokPerSec)) - 1) * 100) };
 }
 
-module.exports = { guessCores, parseLscpu, parseCim, estimateTokPerSec, quantAdvice, bitsOf, cpuProfile, envCommands, benchmark, autoTune, threadCandidates, GB };
+module.exports = { detectCpu, guessCores, parseLscpu, parseCim, estimateTokPerSec, quantAdvice, bitsOf, cpuProfile, envCommands, benchmark, autoTune, threadCandidates, GB };
