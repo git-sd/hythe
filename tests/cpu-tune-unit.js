@@ -21,9 +21,11 @@ const check = (n, ok, x) => { ok ? pass++ : fail++; console.log((ok ? 'PASS ' : 
   check('CIM garbage -> null', T.parseCim('oops') === null);
 
   /* ---- quantization ---- */
-  check('Q8_0 is flagged slow with a speed-up factor', /faster/.test(T.quantAdvice({ quant: 'Q8_0', paramsB: 9, weights: 9.5 * GB }).text) && T.quantAdvice({ quant: 'Q8_0', paramsB: 9 }).level === 'slow');
+  check('Q8_0 on a CPU without int8 instructions: flagged slower, with a pointer to measure', T.quantAdvice({ quant: 'Q8_0', paramsB: 9, weights: 9.5 * GB }).level === 'slow' && /Benchmark/.test(T.quantAdvice({ quant: 'Q8_0', paramsB: 9 }).text));
+check('Q8_0 on a CPU WITH vnni/amx: not flagged slow, and says why (measured on a Xeon with AMX)', (() => { const a = T.quantAdvice({ quant: 'Q8_0', paramsB: 0.8, features: ['avx512', 'vnni', 'amx'] }); return a.level === 'ok' && /vnni, amx/.test(a.text) && /faster on small models/.test(a.text); })());
+check('CPU feature flags are parsed from lscpu', (() => { const l = T.parseLscpu('Core(s) per socket: 4\nSocket(s): 1\nThread(s) per core: 1\nFlags: fpu avx2 avx512f avx512_vnni amx_int8 amx_bf16'); return l.features.join() === 'avx2,avx512,vnni,amx'; })());
   check('Q4_K_M is "best, nothing to change"', T.quantAdvice({ quant: 'Q4_K_M', paramsB: 9 }).level === 'best');
-  check('F16 is very slow on a CPU', T.quantAdvice({ quant: 'F16', paramsB: 9, weights: 18 * GB }).level === 'slow' && /3\.\dx|4\.\dx/.test(T.quantAdvice({ quant: 'F16', paramsB: 9 }).text));
+  check('F16/BF16 is flagged slow (unquantized)', T.quantAdvice({ quant: 'F16', paramsB: 9, weights: 18 * GB }).level === 'slow' && T.quantAdvice({ quant: 'BF16', paramsB: 1 }).level === 'slow');
   check('Q2_K: fast but quality warning', T.quantAdvice({ quant: 'Q2_K' }).level === 'fast');
   check('unknown quant gives guidance, not a guess', T.quantAdvice({ quant: '' }).level === 'unknown');
   check('speed estimate: Q4 9B (6.6 GB) lands in a plausible CPU range', (() => { const e = T.estimateTokPerSec(6.6 * GB); return e.low >= 3 && e.high <= 9 && e.low < e.high; })());
@@ -39,7 +41,9 @@ const check = (n, ok, x) => { ok ? pass++ : fail++; console.log((ok ? 'PASS ' : 
   check('context shrinks when RAM is tight, with a warning when it still cannot fit', (() => { const t = T.cpuProfile({ ...lap, ram: { total: 8 * GB, free: 5 * GB } }); return t.options.num_ctx <= 4096 && t.warnings.length >= 1; })(), T.cpuProfile({ ...lap, ram: { total: 8 * GB, free: 5 * GB } }));
   check('plenty of RAM: 8192 context, no warnings', T.cpuProfile({ ...lap, ram: { total: 32 * GB, free: 24 * GB } }).options.num_ctx === 8192 && T.cpuProfile({ ...lap, ram: { total: 32 * GB, free: 24 * GB } }).warnings.length === 0);
   check('every option has a plain-language reason', ['num_thread', 'num_ctx', 'use_mmap', 'keep_alive'].every((k) => p.why[k] && p.why[k].length > 20));
-  check('Ollama env vars recommended with reasons', p.env.OLLAMA_FLASH_ATTENTION === '1' && p.env.OLLAMA_KV_CACHE_TYPE === 'q8_0' && p.env.OLLAMA_NUM_PARALLEL === '1' && Object.keys(p.env).every((k) => p.envWhy[k]));
+  check('Ollama env: flash attention on, NO quantized KV cache when RAM is fine (it measured slower), every var has a reason', p.env.OLLAMA_FLASH_ATTENTION === '1' && p.env.OLLAMA_KV_CACHE_TYPE === undefined && p.env.OLLAMA_NUM_PARALLEL === '1' && Object.keys(p.env).every((k) => p.envWhy[k]));
+const tightP = T.cpuProfile({ ...lap, ram: { total: 8 * GB, free: 7.2 * GB } });
+check('KV cache q8_0 is recommended only when RAM is tight, with the speed cost stated', tightP.env.OLLAMA_KV_CACHE_TYPE === 'q8_0' && /SLOWER/.test(tightP.envWhy.OLLAMA_KV_CACHE_TYPE), tightP.env);
   check('env commands are pasteable PowerShell', /SetEnvironmentVariable\("OLLAMA_FLASH_ATTENTION", "1", "User"\)/.test(T.envCommands(p.env)));
   check('expected speed range is included and labelled by quant advice', p.speed && p.quant.level === 'best');
 

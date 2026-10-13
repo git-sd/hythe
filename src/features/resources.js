@@ -162,8 +162,10 @@ module.exports = function (ctx) {
     const [cpu, s] = await Promise.all([detectCpu(), sample()]);
     const paramsB = parseFloat(f.params) || 0;
     const kv = f.arch && !f.arch.approx ? fit.kvBytes(f.arch, 1, 'f16') : 0;
+    // memory this model already holds counts as available to it: it is loaded right now, so it is not "missing"
+    const loaded = s.ollama.models.find((m) => m.name === name || m.name === name + ':latest');
     const profile = tune.cpuProfile({
-      cpu, ram: { total: s.ram.total, free: s.ram.free }, goal: opt.goal === 'auto' ? 'auto' : 'cpu', hasGpu: !!(s.gpus && s.gpus.length),
+      cpu, ram: { total: s.ram.total, free: s.ram.free + (loaded ? loaded.size : 0) }, goal: opt.goal === 'auto' ? 'auto' : 'cpu', hasGpu: !!(s.gpus && s.gpus.length),
       model: { weights: f.weights, paramsB, quant: f.quant, kvPerTokenBytes: kv },
     });
     return { model: name, params: f.params, quant: f.quant, weights: f.weights, profile, envScript: tune.envCommands(profile.env), saved: (ctx.featureSettings('models').runtime || {})[name] || {} };

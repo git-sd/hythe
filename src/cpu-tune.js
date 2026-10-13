@@ -2,8 +2,10 @@
 // Exports an object, not a function, so the feature loader never treats this file as a feature.
 //
 // What actually decides CPU speed (honest version):
-//  * Generating a token reads (almost) the whole model from RAM, so speed is limited by MEMORY BANDWIDTH, not by clock
-//    speed. Fewer bytes per weight = faster: Q4 beats Q8 by about 2x. That is why quantization is the biggest lever.
+//  * Generating a token reads (almost) the whole model from RAM, so for BIG models speed is limited by MEMORY BANDWIDTH and
+//    fewer bytes per weight = faster. But it depends on the CPU: on a processor with int8 instructions (AVX-512 VNNI / AMX)
+//    a small model is limited by compute instead, and Q8_0 can be FASTER than Q4 (measured: 0.8B model, Q8_0 35 tokens/s vs
+//    Q4_K_M 25 on a Xeon with AMX). So quantization advice is a starting point; benchmark() on your PC decides.
 //  * llama.cpp (the engine inside Ollama) is fastest with one thread per PHYSICAL core. Using hyper-threads usually
 //    makes it slower. Faber cannot know your core count exactly, so detectCpu() asks the OS and the benchmark verifies.
 //  * Prompt processing (reading a long prompt) is compute-bound and slow on a CPU, so a smaller context and keeping the
@@ -22,12 +24,24 @@ function guessCores(cpus) {
   return { logical, physical: logical / 2, smt: true, source: 'guess', model };
 }
 
+// Instruction-set features that change how fast a quantization runs (from /proc/cpuinfo or lscpu flags).
+function parseFeatures(flags) {
+  const f = ' ' + String(flags || '').toLowerCase() + ' ';
+  const has = (x) => f.includes(' ' + x + ' ');
+  const out = [];
+  if (has('avx2')) out.push('avx2');
+  if (has('avx512f')) out.push('avx512');
+  if (has('avx512_vnni') || has('avx_vnni')) out.push('vnni');
+  if (has('amx_int8') || has('amx_bf16')) out.push('amx');
+  if (has('neon') || has('asimd')) out.push('neon');
+  return out;
+}
 // lscpu (Linux): "Core(s) per socket", "Socket(s)", "Thread(s) per core", "Model name"
 function parseLscpu(text) {
   const g = (re) => { const m = re.exec(text); return m ? m[1].trim() : ''; };
   const per = Number(g(/Core\(s\) per socket:\s*(\d+)/)), sock = Number(g(/Socket\(s\):\s*(\d+)/)) || 1, tpc = Number(g(/Thread\(s\) per core:\s*(\d+)/)) || 1;
   if (!per) return null;
-  return { physical: per * sock, logical: per * sock * tpc, smt: tpc > 1, source: 'lscpu', model: g(/Model name:\s*(.+)/) };
+  return { physical: per * sock, logical: per * sock * tpc, smt: tpc > 1, source: 'lscpu', model: g(/Model name:\s*(.+)/), features: parseFeatures(g(/Flags:\s*(.+)/)) };
 }
 // Windows: Get-CimInstance Win32_Processor | Select Name,NumberOfCores,NumberOfLogicalProcessors | ConvertTo-Json
 function parseCim(text) {
@@ -64,15 +78,19 @@ function estimateTokPerSec(weightsBytes, bandwidthGBs = [25, 50]) {
 const BITS = { F32: 32, F16: 16, BF16: 16, Q8_0: 8.5, Q6_K: 6.6, Q5_K_M: 5.7, Q5_K_S: 5.5, Q5_0: 5.5, Q4_K_M: 4.9, Q4_K_S: 4.6, Q4_0: 4.5, IQ4_XS: 4.3, Q3_K_M: 3.9, Q3_K_S: 3.5, Q2_K: 3.0 };
 const bitsOf = (q) => { const k = String(q || '').toUpperCase().replace(/-/g, '_'); return BITS[k] || (/^F16|^BF16/.test(k) ? 16 : /^Q8/.test(k) ? 8.5 : /^Q6/.test(k) ? 6.6 : /^Q5/.test(k) ? 5.6 : /^Q4/.test(k) ? 4.8 : /^Q3/.test(k) ? 3.8 : /^Q2/.test(k) ? 3 : 0); };
 
-// params in billions; returns what to do about the quantization the model already has.
-function quantAdvice({ quant, paramsB, weights }) {
+// params in billions; returns what to do about the quantization the model already has. This is advice from general rules;
+// the measured numbers (benchmark) override it, and on CPUs with int8 instructions (vnni / amx) Q8_0 can win on small models.
+function quantAdvice({ quant, paramsB, weights, features = [] }) {
   const bits = bitsOf(quant);
   const size = (b) => (paramsB ? `about ${((paramsB * 1e9 * b) / 8 / GB).toFixed(1)} GB` : 'smaller');
-  if (!bits) return { level: 'unknown', text: 'The quantization of this model is unknown. Check it with /model info; Q4_K_M is the usual best choice on a CPU.' };
-  if (bits >= 8) return { level: 'slow', text: `${quant} is large for a CPU: every token reads ${weights ? (weights / GB).toFixed(1) + ' GB' : 'all the weights'}. A Q4_K_M version (${size(4.9)}) would generate roughly ${(bits / 4.9).toFixed(1)}x faster with a small quality loss.` };
-  if (bits >= 5) return { level: 'ok', text: `${quant} is fine for quality but Q4_K_M (${size(4.9)}) would generate about ${(bits / 4.9).toFixed(1)}x faster.` };
-  if (bits >= 4.2) return { level: 'best', text: `${quant} is the best size / quality / speed balance for a CPU. Nothing to change.` };
-  return { level: 'fast', text: `${quant} is very small and fast, but quality drops noticeably. Use it only for simple jobs (for example as the fast helper model).` };
+  const int8 = features.includes('vnni') || features.includes('amx');
+  const measure = ' Compare variants on this PC with Benchmark (or "bench --models a,b").';
+  if (!bits) return { level: 'unknown', text: 'The quantization of this model is unknown. Q4_K_M is the usual starting point on a CPU.' + measure };
+  if (bits >= 12) return { level: 'slow', text: `${quant} is the unquantized size: every token reads ${weights ? (weights / GB).toFixed(1) + ' GB' : 'all the weights'}. It is almost always the slowest and uses the most memory. Q8_0 or Q4_K_M are much lighter (Q4_K_M ${size(4.9)}).` + measure };
+  if (bits >= 8) return { level: int8 ? 'ok' : 'slow', text: `${quant} keeps the best quality. ${int8 ? 'This CPU has int8 instructions (' + features.filter((x) => x === 'vnni' || x === 'amx').join(', ') + '), so Q8_0 can be as fast as Q4 or faster on small models, but a big model is still limited by memory.' : 'On a CPU without int8 instructions it is usually slower than Q4 because it reads about twice the data.'} Q4_K_M would be ${size(4.9)}.` + measure };
+  if (bits >= 5) return { level: 'ok', text: `${quant} is a quality-leaning choice. Q4_K_M (${size(4.9)}) is smaller and usually faster for big models.` + measure };
+  if (bits >= 4.2) return { level: 'best', text: `${quant} is the usual best balance of size, quality and speed for a CPU, especially for larger models (memory-bound).` + measure };
+  return { level: 'fast', text: `${quant} is very small, but quality drops noticeably. Use it only for simple jobs (for example as the fast helper model).` + measure };
 }
 
 /* ---------- the profile ---------- */
@@ -91,9 +109,12 @@ function cpuProfile({ cpu, ram, model, goal = 'cpu', hasGpu = false } = {}) {
   if (need(ctx) > avail) warnings.push(`This model needs about ${(need(ctx) / GB).toFixed(1)} GB but only ${(ram.free / GB).toFixed(1)} GB of RAM is free. Close other programs or use a smaller model / quantization, or Windows will swap to disk and everything will crawl.`);
   const options = { num_thread: threads, num_ctx: ctx, use_mmap: true, keep_alive: '30m' };
   if (goal === 'cpu' || !hasGpu) options.num_gpu = 0;
+  // Measured on a real 9B model on a CPU: flash attention is a small win (+3 to 5%), but a quantized KV cache (q8_0) is a
+  // memory saving that COSTS speed (-9% writing, -15% reading). So it is only recommended when RAM is tight.
+  const tight = need(ctx) > avail * 0.85;
   const env = {
     OLLAMA_FLASH_ATTENTION: '1',
-    OLLAMA_KV_CACHE_TYPE: 'q8_0',
+    ...(tight ? { OLLAMA_KV_CACHE_TYPE: 'q8_0' } : {}),
     OLLAMA_NUM_PARALLEL: '1',
     OLLAMA_MAX_LOADED_MODELS: '1',
   };
@@ -105,16 +126,16 @@ function cpuProfile({ cpu, ram, model, goal = 'cpu', hasGpu = false } = {}) {
     num_gpu: options.num_gpu === 0 ? 'Forces CPU-only. Remove this if your graphics card can hold the whole model: a GPU is far faster.' : '',
   };
   const envWhy = {
-    OLLAMA_FLASH_ATTENTION: 'Cheaper attention, less memory at long contexts.',
-    OLLAMA_KV_CACHE_TYPE: 'q8_0 halves the context memory (needs flash attention).',
+    OLLAMA_FLASH_ATTENTION: 'Cheaper attention: measured +3 to 5% speed and less memory at long contexts.',
+    OLLAMA_KV_CACHE_TYPE: 'Halves the context memory, but measured 9 to 15% SLOWER. Only recommended because RAM is tight here.',
     OLLAMA_NUM_PARALLEL: 'One request at a time: parallel requests multiply memory use and slow each other on a CPU.',
-    OLLAMA_MAX_LOADED_MODELS: 'One model in RAM at a time. Several specialist models will take turns (a swap costs a few seconds each).',
+    OLLAMA_MAX_LOADED_MODELS: 'One model in RAM at a time. With several specialist models they take turns, and each swap costs about 10 to 30 seconds on a CPU (measured). Raise it to 2 to 4 for orchestrations if all those models fit in RAM.',
   };
   const speed = estimateTokPerSec(weights);
   return {
     options, env, why, envWhy, warnings, speed,
-    quant: quantAdvice({ quant: model.quant, paramsB: model.paramsB, weights }),
-    cpu: { physical, logical: cpu.logical, smt: !!cpu.smt, source: cpu.source || '', model: cpu.model || '' },
+    quant: quantAdvice({ quant: model.quant, paramsB: model.paramsB, weights, features: cpu.features || [] }),
+    cpu: { physical, logical: cpu.logical, smt: !!cpu.smt, source: cpu.source || '', model: cpu.model || '', features: cpu.features || [] },
     notes: [
       'Speed on a CPU is limited by memory bandwidth: faster RAM (dual channel, DDR5) helps more than a faster processor.',
       'The first message after a pause includes the model load time. With keep_alive it only happens once per session.',
@@ -141,7 +162,7 @@ async function post(host, url, body, timeoutMs, fetchImpl = fetch) {
 }
 
 // One measurement. The model is loaded first by a tiny warm-up call so the load time is reported separately.
-async function benchmark({ host, model, options = {}, keepAlive = '30m', numPredict = 48, timeoutMs = 600000, fetchImpl, warm = true } = {}) {
+async function benchmark({ host, model, options = {}, keepAlive = '30m', numPredict = 48, timeoutMs = 600000, fetchImpl, warm = true, prompt = PROMPT } = {}) {
   try {
     const opt = { ...options, temperature: 0 };
     let loadMs = 0;
@@ -150,7 +171,7 @@ async function benchmark({ host, model, options = {}, keepAlive = '30m', numPred
       loadMs = Math.round((w.load_duration || 0) / 1e6);
     }
     const t0 = Date.now();
-    const j = await post(host, '/api/generate', { model, prompt: PROMPT, stream: false, keep_alive: keepAlive, options: { ...opt, num_predict: numPredict } }, timeoutMs, fetchImpl);
+    const j = await post(host, '/api/generate', { model, prompt, stream: false, keep_alive: keepAlive, options: { ...opt, num_predict: numPredict } }, timeoutMs, fetchImpl);
     const evalS = (j.eval_duration || 0) / 1e9, promptS = (j.prompt_eval_duration || 0) / 1e9;
     return {
       ok: true, model, options: { ...options },
@@ -184,4 +205,7 @@ async function autoTune({ host, model, cpu, base = {}, candidates, numPredict = 
   return { ok: true, best: { threads: best.threads, tokPerSec: best.tokPerSec }, table, gainVsWorst: Math.round((top / Math.min(...good.map((t) => t.tokPerSec)) - 1) * 100) };
 }
 
-module.exports = { detectCpu, guessCores, parseLscpu, parseCim, estimateTokPerSec, quantAdvice, bitsOf, cpuProfile, envCommands, benchmark, autoTune, threadCandidates, GB };
+// A prompt of roughly `tokens` tokens, for measuring how fast the model READS (an agent sends long prompts).
+const longPrompt = (tokens) => Array.from({ length: Math.max(1, Math.round(tokens / 11)) }, (_, i) => `Item ${i}: the quick brown fox jumps over the lazy dog.`).join('\n') + '\n\nSay OK.';
+
+module.exports = { longPrompt, parseFeatures, detectCpu, guessCores, parseLscpu, parseCim, estimateTokPerSec, quantAdvice, bitsOf, cpuProfile, envCommands, benchmark, autoTune, threadCandidates, GB };

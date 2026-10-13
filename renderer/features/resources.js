@@ -228,7 +228,7 @@ Faber.register('resources', (F) => {
       cur = r;
       const p = r.profile;
       out.innerHTML = '';
-      out.appendChild(el('div', 'rsNote', `CPU: ${p.cpu.model || 'unknown'}. ${p.cpu.physical} physical cores, ${p.cpu.logical} threads${p.cpu.smt ? ' (hyper-threading)' : ''}. ${p.cpu.source === 'guess' ? 'Core count is a guess: the benchmark below checks it.' : 'Detected from the system.'}`));
+      out.appendChild(el('div', 'rsNote', `CPU: ${p.cpu.model || 'unknown'}. ${p.cpu.physical} physical cores, ${p.cpu.logical} threads${p.cpu.smt ? ' (hyper-threading)' : ''}${p.cpu.features && p.cpu.features.length ? '; instruction sets: ' + p.cpu.features.join(', ') : ''}. ${p.cpu.source === 'guess' ? 'Core count is a guess: the benchmark below checks it.' : 'Detected from the system.'}`));
       out.appendChild(el('div', 'rsHead', `${r.model}  ${[r.params, r.quant].filter(Boolean).join('  ')}`));
       if (p.speed) out.appendChild(el('div', 'rsNote', `Expected on a typical CPU: about ${p.speed.low} to ${p.speed.high} tokens/s when writing (rough estimate from the model size; Benchmark shows the real number).`));
       out.appendChild(el('div', 'rsVerdict ' + (p.quant.level === 'slow' ? 'warn' : p.quant.level === 'best' ? 'ok' : ''), p.quant.text));

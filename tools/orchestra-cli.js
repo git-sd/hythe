@@ -4,9 +4,11 @@
 //
 //   node tools/orchestra-cli.js run "<task>" [--dir <project folder>] [--host <url>] [--mode auto|edits|ask]
 //        [--conductor <model>] [--coder <model>] [--reviewer <model>] [--fast <model>] [--concurrency 1] [--rework 1]
-//        [--timeout 900] [--trace <file.jsonl>] [--full] [--color]
+//        [--timeout 900] [--effort low|medium|high] [--ctx 8192] [--runtime <file.json>] [--trace <file.jsonl>] [--full] [--color]
+//        --runtime: JSON { "<model>": { "num_thread": 4, "num_ctx": 8192, "keep_alive": "30m", ... } } (what the Resources tab saves)
 //   node tools/orchestra-cli.js roster [--host <url>]
-//   node tools/orchestra-cli.js tune --model <model> [--host <url>] [--autotune] [--tokens 48]
+//   node tools/orchestra-cli.js tune --model <model> [--host <url>] [--autotune] [--candidates 1,2,3,4] [--tokens 48]
+//   node tools/orchestra-cli.js bench --models <a,b,c> [--threads N] [--tokens 48] [--long <prompt tokens>] [--ctx N] [--host <url>]   (same options, one row per model: compare quantizations or sizes)
 //   node tools/orchestra-cli.js demo                      (scripted models, no Ollama needed)
 const fs = require('fs');
 const os = require('os');
@@ -71,7 +73,7 @@ async function cmdTune() {
   const cpu = await cpuTune.detectCpu({ os });
   const ram = { total: os.totalmem(), free: os.freemem() };
   const p = cpuTune.cpuProfile({ cpu, ram, model: { weights: m.size, paramsB: parseFloat(m.params) || 0, quant: m.quant } });
-  say(`CPU: ${cpu.model || 'unknown'}: ${cpu.physical} physical cores, ${cpu.logical} threads (${cpu.source})`);
+  say(`CPU: ${cpu.model || 'unknown'}: ${cpu.physical} physical cores, ${cpu.logical} threads (${cpu.source})${cpu.features && cpu.features.length ? '; features: ' + cpu.features.join(', ') : ''}`);
   say(`RAM: ${gb(ram.total)} total, ${gb(ram.free)} free`);
   say(`Model: ${m.name}  ${m.params} ${m.quant}  ${gb(m.size)}`);
   if (p.speed) say(`Expected speed (rough): ${p.speed.low} to ${p.speed.high} tokens/s`);
@@ -88,9 +90,28 @@ async function cmdTune() {
   say(`  ${b.tokPerSec} tokens/s writing, ${b.promptTokPerSec} tokens/s reading the prompt, load ${(b.loadMs / 1000).toFixed(1)}s`);
   if (flags.autotune) {
     say('\nAuto-tuning thread count...');
-    const t = await cpuTune.autoTune({ host, model: m.name, cpu, base: { ...p.options, num_thread: undefined }, numPredict: tokens, onProgress: (e) => say(`  ${String(e.threads).padStart(2)} threads: ${e.result.ok ? e.result.tokPerSec + ' tokens/s' : e.result.error}`) });
+    const t = await cpuTune.autoTune({ host, model: m.name, cpu, base: { ...p.options, num_thread: undefined }, candidates: flags.candidates ? String(flags.candidates).split(',').map(Number).filter((n) => n >= 1) : undefined, numPredict: tokens, onProgress: (e) => say(`  ${String(e.threads).padStart(2)} threads: ${e.result.ok ? e.result.tokPerSec + ' tokens/s' : e.result.error}`) });
     if (!t.ok) throw new Error(t.error);
     say(`Best: ${t.best.threads} threads at ${t.best.tokPerSec} tokens/s (${t.gainVsWorst}% faster than the slowest tried).`);
+  }
+}
+
+async function cmdBench() {
+  const names = String(flags.models || '').split(',').map((x) => x.trim()).filter(Boolean);
+  if (!names.length) throw new Error('Usage: bench --models a,b,c [--threads N] [--tokens 48]');
+  const inst = await installed();
+  const cpu = await cpuTune.detectCpu({ os });
+  const options = {};
+  if (flags.threads) options.num_thread = Number(flags.threads);
+  if (flags.ctx) options.num_ctx = Number(flags.ctx);
+  const prompt = flags.long ? cpuTune.longPrompt(Number(flags.long)) : undefined;
+  say(`CPU: ${cpu.model || 'unknown'}: ${cpu.physical} physical cores, ${cpu.logical} threads (${cpu.source})${cpu.features && cpu.features.length ? ', features: ' + cpu.features.join(' ') : ''}. Options: ${JSON.stringify(options)}`);
+  say(`${'model'.padEnd(26)} ${'file'.padStart(9)} ${'quant'.padEnd(8)} ${'write t/s'.padStart(10)} ${'read t/s'.padStart(10)} ${'load'.padStart(7)}`);
+  for (const n of names) {
+    const m = inst.find((x) => x.name === n || x.name === n + ':latest');
+    if (!m) { say(`${n.padEnd(26)} not installed`); continue; }
+    const b = await cpuTune.benchmark({ host, model: m.name, options, numPredict: Number(flags.tokens) || 48, prompt });
+    say(b.ok ? `${m.name.padEnd(26)} ${gb(m.size).padStart(9)} ${String(m.quant).padEnd(8)} ${String(b.tokPerSec).padStart(10)} ${String(b.promptTokPerSec).padStart(10)} ${((b.loadMs || 0) / 1000).toFixed(1).padStart(6)}s` : `${m.name.padEnd(26)} ERROR ${b.error}`);
   }
 }
 
@@ -125,7 +146,9 @@ async function cmdRun() {
   const ask = async (q) => { process.stdout.write(q); const a = await nextLine(); process.stdout.write(a + '\n'); return /^y/i.test(a); };
   const mode = ['ask', 'edits', 'auto'].includes(flags.mode) ? flags.mode : 'auto';
   const orch = createOrchestrator({
-    host, workspace: dir, line, mode, concurrency: Number(flags.concurrency) || 1, maxRework: flags.rework === undefined ? 1 : Number(flags.rework), stepTimeoutSec: Number(flags.timeout) || 900,
+    host, workspace: dir, line, mode, effort: ['low', 'medium', 'high'].includes(flags.effort) ? flags.effort : 'medium', numCtx: Number(flags.ctx) || 8192,
+    features: flags.runtime ? { models: { runtime: JSON.parse(fs.readFileSync(path.resolve(flags.runtime), 'utf8')) } } : {},
+    concurrency: Number(flags.concurrency) || 1, maxRework: flags.rework === undefined ? 1 : Number(flags.rework), stepTimeoutSec: Number(flags.timeout) || 900,
     roster: { conductor: { model: pick('conductor') }, agents: ['coder', 'reviewer', 'fast'].map((role) => ({ name: role, role, model: pick(role) })) },
     installed: inst.map((m) => m.name), fallbackModel: primary,
     approve: mode === 'auto' ? null : (kind, title, detail) => ask(`\n>>> APPROVAL: ${title}\n${String(detail).slice(0, 600)}\nAllow? [y/N] `),
@@ -149,6 +172,7 @@ async function cmdRun() {
     if (cmd === 'run') await cmdRun();
     else if (cmd === 'roster') await cmdRoster();
     else if (cmd === 'tune') await cmdTune();
+    else if (cmd === 'bench') await cmdBench();
     else if (cmd === 'demo') { const { runDemo } = require('../tests/orchestration-demo'); const r = await runDemo({ color, full: flags.full }); await r.fake.close(); process.exit(r.result.ok && r.testOk ? 0 : 1); }
     else {
       say(fs.readFileSync(__filename, 'utf8').split('\n').filter((l) => l.startsWith('//')).map((l) => l.slice(3)).join('\n'));
