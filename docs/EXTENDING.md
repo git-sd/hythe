@@ -19,8 +19,10 @@ features IN PARALLEL, so everyone works in their OWN files and plugs in through 
     renderer/faber.js       the extension API (below)
     renderer/features/<name>.js + .css   renderer part of a feature  Faber.register(name, (F) => {...})
 
-Feature names (files already exist as stubs, replace them): `ui-settings`, `background`, `agents`, `debug`,
-`models`, `git`, `remote`, `plugins`.
+Feature names: `ui-settings`, `background`, `agents`, `debug`, `models`, `git`, `remote`, `plugins`, `claude`
+(optional online provider), `resources` (Models > Resources), `panes` (split chats), `team` (team mode).
+Core (not features): `renderer/dock.js` (layout engine), `renderer/editor.js` (editor groups), `renderer/layout.js` (saves layouts),
+`src/claude.js` (Anthropic API client), `src/team-lib.js` (team board), `src/bus.js` (features talking to features).
 
 ## Renderer API: `Faber` (see renderer/faber.js, ~150 lines, read it)
 
@@ -54,6 +56,42 @@ Feature names (files already exist as stubs, replace them): `ui-settings`, `back
 
 The loader calls your module once. If it throws, only your feature is disabled.
 
+## Layout: dock, editor groups, panes (renderer)
+
+The main area is a tree of panels managed by `Dock` (renderer/dock.js). Panels are real DOM elements that sit in `#dockPark`
+while hidden. Every panel is registered with `Dock.register({ id, title, el, onClose })`: `chat` (the `#chatPanel` element,
+always visible), `terminal` (`#term`), and one `editorN` per editor group.
+
+    Dock.show(id[, {near, zone, ratio}])  Dock.hide(id)  Dock.toggle(id)  Dock.visible(id)  Dock.move(id, nearId, zone)
+    Dock.reset()  Dock.serialize()  Dock.restore(tree)  Dock.onChange(fn)  Dock.title(id, text)
+
+The user drags a panel's tab onto an edge (dock) or the middle (stack). `layout.js` persists the tree in `features.dock`.
+Never hard-code positions of chat / editor / terminal: they move. Use ids (`$('edText')` is always the ACTIVE editor's text area).
+
+Editor groups (`Editors`, renderer/editor.js): documents are shared between groups. The globals `tabs` / `activeTab` and the legacy ids
+(`#editor #edText #tabs #edGutter ...`) always point at the active group, so code that edits "the editor" keeps working. Editor DOM
+is styled by CLASS (`.edText .edHl .edGutter .edTabs ...`), never by id.
+
+Split chat (`F.panes`, renderer/features/panes.js): `F.panes.show(sids, mode)`. Chat views are moved into pane bodies; a view's
+scroll container is `view.scroller` (null in single mode). Streaming text is painted at most once per animation frame (`queuePaint`).
+
+`Faber.chat` (app.js) also offers `views() view(sid) sendTo(sid, text) setBroadcast(fn) runCommand(line) openMenu(...)`. The event
+`Faber.emit('agent-event', { view, ev })` fires for every agent event. Models tab views: `F.modelsViews.push({ id, title, render(el), onShow, onHide })`.
+
+## Team mode and tools (main process)
+
+Members are normal agent sessions created through `src/bus.js` (`bus.agents.create/run/stop/close`, filled by agents.js). Team tools
+(`board_*`, `claim_files`, `finish_work`) are registered with `ctx.tools.registerTool(schema, impl, { when: (sessionId) => bool })`:
+a tool with `when` is only offered to agents for which it returns true. `ctx.tools.setWriteGuard((absPath, toolCtx) => {})` lets a
+feature veto `write_file` / `edit_file` (team file claims); it does NOT cover `run_command`. A session can have a restricted tool list
+(`allowedTools`) and extra system text (`teamSystem`).
+
+## Online provider (Claude)
+
+`src/claude.js` maps `claude:<model-id>` models to the Anthropic Messages API (streaming, tool use, thinking blocks replayed with
+their signatures). Rules: opt-in, never the default, key only via `safeStorage`, never sent to the renderer, a persistent ONLINE
+indicator while on, and it is switched off at every start. Plain `fetch` is used on purpose (no new npm dependency).
+
 ## Rules for everyone
 
 1. OFFLINE FIRST. The renderer is locked to local resources (CSP + request blocking). Never add a CDN, web font, or
@@ -79,7 +117,23 @@ The loader calls your module once. If it throws, only your feature is disabled.
 
 ## Testing (required: prove it works in the REAL app, not just syntax)
 
-Use the pattern in `tests/example-smoke.js`: an Electron script that `require`s main.js with a temp userData dir, drives
+FIRST CHOICE for anything that is not Electron itself: the browser harness. `tests/web/harness.js` runs the REAL renderer in
+Chromium (Playwright) against the REAL main.js and features, with a stand-in for Electron (windows, IPC, dialogs, safeStorage)
+and a fake PTY. It works on Linux and Windows and needs no display. Run: `NODE_PATH=$(npm root -g) node tests/web/<name>.js`
+(it needs the `playwright` package and its Chromium; it is not a project dependency). One launch() per process. Tests:
+
+    tests/web/boot-smoke.js       boots, visits every tab and settings section, no page errors
+    tests/web/features-smoke.js   agents, git, models, plugins, debug through IPC
+    tests/web/editor-regress.js   ports of editor-live / editor-crlf / editor-reload (run after touching editor.js)
+    tests/web/layout-regress.js   port of layout-scroll-smoke (the page never scrolls)
+    tests/web/dock-gui.js         drag to dock, stacking, editor groups, save/restore layouts
+    tests/web/panes-gui.js  team-gui.js  team-main.js  claude-gui.js  resources-gui.js
+    tests/claude-unit.js  team-unit.js  resources-unit.js     plain Node, no browser
+
+NOT covered by the harness: Electron itself (real window, zoom, native dialogs, real PowerShell PTY, GPU). Those still need the
+Electron smoke tests below, run on Windows.
+
+Electron pattern: use `tests/example-smoke.js`: an Electron script that `require`s main.js with a temp userData dir, drives
 the renderer with `webContents.executeJavaScript`, and writes PASS/FAIL lines to a log file. Copy it to
 `tests/<yourfeature>-smoke.js` and extend it. Run it with PowerShell, tracking ONLY the process you start:
 

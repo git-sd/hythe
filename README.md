@@ -13,6 +13,11 @@ After that the app itself runs offline.
 - Reload (header button, F5 or Ctrl+R): re-reads every open file and the file tree from disk. The editor also updates on its own when the AI or a terminal program changes a file.
 - Terminal (Ctrl+`): a real PowerShell, anywhere on your PC. Run claude, python, vim, ssh, anything interactive. Multiple tabs.
 - Bottom bar: model, effort and permission menus. Type / for commands.
+- Layout: drag the title of the Chat, Editor or Terminal panel onto the edge of another panel to dock it there, or onto its middle to stack them as tabs. Drag the thin dividers to resize. View > Split Editor (Ctrl+\\) opens a second editor on the same files. View > Save Layout As... / Saved Layouts / Reset Layout. The layout is remembered.
+- Split chats: Split (header) or `/split columns|rows|grid|focus` shows every agent in its own pane with its own input and a live activity line. "Broadcast" sends one message to all of them.
+- Team: the Team tab runs several agents on one task. A lead plans, coders and reviewers work from a shared board, files are claimed so two agents never edit the same one, and there are round limits, Stop, Pause, checkpoints and a final summary.
+- Models > Resources: live CPU / RAM / GPU meters, what Ollama has loaded, and an advisor that says whether (and how) a model fits, with GPU layers / threads / context controls. Be realistic: an 8 GB graphics card and 15 GB RAM run 9B models well, 14B-30B slowly, and cannot run 70B+ models such as an 80B.
+- Claude (online, optional): Settings > Claude (online). You enter your own Anthropic API key (stored encrypted with your Windows account), turn it on, and pick a Claude model. It is off by default and off again at every start; while on, an amber ONLINE indicator is always visible because your prompts and the file contents the AI reads then leave this PC.
 
 ## Build the installer (developers)
     npm install
