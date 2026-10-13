@@ -125,7 +125,7 @@ module.exports = function (ctx) {
 
   /* ---------- events: log them (for restoring the chat) and forward them ---------- */
   function record(s, ev) {
-    if (ev.type === 'file_changed' || ev.type === 'tool_output') return;
+    if (ev.type === 'file_changed' || ev.type === 'tool_output' || ev.type === 'usage') return;
     const last = s.log[s.log.length - 1];
     if ((ev.type === 'token' || ev.type === 'thinking') && last && last.type === ev.type && last.sub === ev.sub) {
       last.text += ev.text;

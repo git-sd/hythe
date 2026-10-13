@@ -214,6 +214,10 @@ function createAgent(opts) {
         contentChars: content.length, thinkingChars: thinking.length, toolCalls: calls.length, wallMs: Date.now() - t0,
       });
     }
+    if (final) {
+      const ns = final.eval_duration || 0;
+      emit({ type: 'usage', model: body.model, prompt: final.prompt_eval_count || 0, eval: final.eval_count || 0, tps: ns && final.eval_count ? Math.round((final.eval_count / (ns / 1e9)) * 10) / 10 : null, ms: Date.now() - t0 });
+    }
     if (final && final.done_reason === 'length') emit({ type: 'notice', text: 'The reply was cut off by the token limit. Say "continue" to go on.' });
     return { content, calls, raw };
   }
