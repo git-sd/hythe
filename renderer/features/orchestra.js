@@ -1,6 +1,8 @@
-/* feature: orchestra (renderer). The Orchestra tab: give a task to a conductor that plans it and hands the steps to specialist
-   agents running on DIFFERENT models. Pick which model plays which role, see suggested specialist models, watch the steps,
-   answer approvals here, and follow every message in the Trace panel. Main side: src/features/orchestra.js, src/orchestrator.js. */
+/* feature: orchestra (renderer). The Orchestra tab has two modes.
+   CHAT (default): talk to the orchestrator. "Create 4 agents", "add a reviewer", "build a snake game": it makes the agents, shows
+   the team, runs tasks with it and reports progress in the conversation. TASK FORM: the classic form, one task, four fixed roles,
+   you pick the models. Either way every message between the agents appears in the Trace panel, word for word.
+   Main side: src/features/orchestra.js, src/orchestrator-chat.js, src/orchestrator.js. */
 Faber.register('orchestra', (F) => {
   const { el } = F;
   const NS = 'feat:orchestra:';
@@ -14,7 +16,9 @@ Faber.register('orchestra', (F) => {
   let S = { running: false, phase: 'idle', result: null, approvals: [] };
   const choice = {};            // role -> model chosen by the user ('' = automatic)
   const opts = { mode: 'edits', concurrency: 1, maxRework: 1, timeout: 900, task: '' };
-  let pane = null, setupBox = null, runBox = null, rosterBox = null;
+  let pane = null, setupBox = null, runBox = null, rosterBox = null, chatBox = null, modeBar = null;
+  let viewMode = 'chat';          // 'chat' | 'form'
+  let C = { team: [], conductor: '', busy: false, concurrency: 1, mode: 'edits', pendingTask: '', history: [] };
 
   const gb = (n) => (n ? (n / GB).toFixed(1) + ' GB' : '?');
   const btn = (label, onClick, cls, title) => { const b = el('button', cls || '', label); if (title) b.title = title; b.onclick = onClick; return b; };
@@ -100,6 +104,101 @@ Faber.register('orchestra', (F) => {
     paintRoster();
   }
 
+  /* ---------- chat with the orchestrator ---------- */
+  let chatLog = null, teamBox = null, chatInput = null, sendBtn = null, stopBtn = null, chipsBox = null, approvalsBox = null, busyLine = null;
+  const shown = new Set();
+  const KIND_LABEL = { coder: 'coder', reviewer: 'reviewer', researcher: 'researcher', fast: 'fast helper' };
+  function nearBottom() { return !chatLog || chatLog.scrollHeight - chatLog.scrollTop - chatLog.clientHeight < 60; }
+  function paintTeam() {
+    if (!teamBox) return;
+    teamBox.innerHTML = '';
+    const head = el('div', 'orTeamHead');
+    head.appendChild(el('b', '', C.team.length ? `Team (${C.team.length})` : 'Team'));
+    teamBox.appendChild(head);
+    if (!C.team.length) { teamBox.appendChild(el('div', 'orHint', 'No agents yet. Tell the orchestrator how many you want, for example "create 4 agents".')); return; }
+    const grid = el('div', 'orAgents');
+    for (const a of C.team) {
+      const card = el('div', 'orAgent');
+      card.title = `${a.name}: ${a.focus ? 'coder, ' + a.focus : (KIND_LABEL[a.role] || a.role)}\nmodel: ${a.model || '(none)'}`;
+      card.append(el('b', '', a.name), el('span', 'orHint', a.focus ? 'tester/writer' : (KIND_LABEL[a.role] || a.role)), btn('x', () => send('remove ' + a.name), 'ghost orX', `Remove ${a.name}`));
+      grid.appendChild(card);
+    }
+    teamBox.appendChild(grid);
+    const by = new Map();
+    for (const a of C.team) { if (!by.has(a.model)) by.set(a.model, []); by.get(a.model).push(a.name); }
+    teamBox.appendChild(el('div', 'orHint orModelsLine', [...by.entries()].map(([m, n]) => `${m || '(no model)'}: ${n.join(', ')}`).join('  |  ') + `   (${C.concurrency === 1 ? 'one at a time' : C.concurrency + ' at a time'}, permissions: ${C.mode})`));
+  }
+  function paintMessages() {
+    if (!chatLog) return;
+    const stick = nearBottom();
+    for (const m of C.history) {
+      if (shown.has(m.id)) continue;
+      shown.add(m.id);
+      const d = el('div', 'orMsg ' + (m.from === 'you' ? 'you' : 'bot') + (m.kind ? ' k-' + m.kind : ''));
+      d.appendChild(el('div', 'orMsgWho', m.from === 'you' ? 'You' : 'Orchestrator'));
+      d.appendChild(el('div', 'orMsgText', m.text));
+      chatLog.appendChild(d);
+    }
+    if (!C.history.length && !chatLog.firstChild) {
+      const d = el('div', 'orMsg bot');
+      d.appendChild(el('div', 'orMsgWho', 'Orchestrator'));
+      d.appendChild(el('div', 'orMsgText', 'Hello. Tell me how many agents you want and I will create them, for example:\n  create 4 agents\n  I want 2 coders, a tester and a reviewer\nThen tell me what to build. Say "help" to see everything I understand.'));
+      d.dataset.hello = '1';
+      chatLog.appendChild(d);
+    } else if (C.history.length) { const h = chatLog.querySelector('[data-hello]'); if (h) h.remove(); }
+    if (stick) chatLog.scrollTop = chatLog.scrollHeight;
+  }
+  function paintChatState() {
+    if (!chatBox) return;
+    paintTeam(); paintMessages();
+    const running = C.busy || S.running;
+    sendBtn.disabled = false;
+    stopBtn.hidden = !running;
+    busyLine.hidden = !running;
+    busyLine.textContent = running ? (S.running && PHASE[S.phase] ? PHASE[S.phase] + '...' : 'Working...') : '';
+    chipsBox.innerHTML = '';
+    const sugg = C.team.length ? ['Show the team', 'Add a reviewer', 'Add 2 more coders', 'Help'] : ['Create 3 agents', 'Create 2 coders and a reviewer', 'Help'];
+    for (const t of sugg) chipsBox.appendChild(btn(t, () => send(t), 'orChip2'));
+    approvalsBox.innerHTML = '';
+    for (const a of S.approvals || []) {
+      const card = el('div', 'orApproval');
+      card.append(el('b', '', a.title), el('pre', 'orPre', a.detail || ''));
+      const bs = el('div', 'orBtns');
+      bs.append(btn('Allow', () => call('approve', a.id, true).catch(fail), 'primary'), btn('Deny', () => call('approve', a.id, false).catch(fail)));
+      card.appendChild(bs);
+      approvalsBox.appendChild(card);
+    }
+  }
+  async function send(text) {
+    text = String(text == null ? chatInput.value : text).trim();
+    if (!text) return;
+    if (chatInput.value.trim() === text) chatInput.value = '';
+    try { await call('chat-send', text); } catch (e) { fail(e); }
+    chatInput.focus();
+  }
+  function buildChat() {
+    chatBox.innerHTML = '';
+    teamBox = el('div', 'orTeam');
+    chatLog = el('div', 'orLog');
+    approvalsBox = el('div', 'orApprovals');
+    busyLine = el('div', 'orBusy'); busyLine.hidden = true;
+    chipsBox = el('div', 'orChips');
+    chatInput = el('textarea', 'orInput');
+    chatInput.rows = 2; chatInput.placeholder = 'Talk to the orchestrator...';
+    chatInput.title = 'For example: "create 4 agents", "I want 2 coders and a reviewer", "build a snake game in snake.js". Enter sends, Shift+Enter starts a new line.';
+    chatInput.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } };
+    sendBtn = btn('Send', () => send(), 'primary');
+    stopBtn = btn('Stop', () => call('stop').catch(fail), '', 'Stop the agents'); stopBtn.hidden = true;
+    const row = el('div', 'orInputRow');
+    const btns = el('div', 'orSendRow');
+    btns.append(btn('Trace', () => F.openTrace && F.openTrace(), 'ghost', 'Show every message between the agents'), stopBtn, sendBtn);
+    row.append(chatInput, btns);
+    chatBox.append(teamBox, chatLog, approvalsBox, busyLine, chipsBox, row);
+    shown.clear();
+    paintChatState();
+  }
+  async function loadChat() { try { C = await call('chat-state'); } catch { /* feature missing */ } if (chatBox) { if (!chatLog) buildChat(); else paintChatState(); } }
+
   /* ---------- run view ---------- */
   const PHASE = { planning: 'The conductor is planning', running: 'Agents are working', finishing: 'The conductor is writing the final answer', done: 'Finished', idle: 'Idle', starting: 'Starting' };
   const STATUS_CLASS = { done: 'done', running: 'doing', failed: 'bad', skipped: 'bad', stopped: 'bad', pending: '' };
@@ -140,6 +239,10 @@ Faber.register('orchestra', (F) => {
     if (r.error) runBox.appendChild(el('div', 'orBad', r.error));
   }
   function show() {
+    if (modeBar) for (const b of modeBar.querySelectorAll('button')) b.classList.toggle('on', b.dataset.mode === viewMode);
+    pane && pane.classList.toggle('orChatMode', viewMode === 'chat');
+    chatBox.hidden = viewMode !== 'chat';
+    if (viewMode === 'chat') { setupBox.hidden = true; runBox.hidden = true; if (!chatLog) buildChat(); else paintChatState(); return; }
     const showRun = S.running || (S.result && S.task);
     setupBox.hidden = !!showRun;
     runBox.hidden = !showRun;
@@ -150,13 +253,16 @@ Faber.register('orchestra', (F) => {
     id: 'orchestra', title: 'Orchestra',
     render(root) {
       pane = root; root.classList.add('or');
-      setupBox = el('div', 'orSetup'); runBox = el('div', 'orRun');
-      root.append(setupBox, runBox);
-      buildSetup(); show(); loadRoster();
+      modeBar = el('div', 'orModes');
+      for (const [id, label] of [['chat', 'Chat'], ['form', 'Task form']]) { const b = btn(label, () => { viewMode = id; show(); if (id === 'form') loadRoster(); }, 'orMode'); b.dataset.mode = id; modeBar.appendChild(b); }
+      chatBox = el('div', 'orChatBox'); setupBox = el('div', 'orSetup'); runBox = el('div', 'orRun');
+      root.append(modeBar, chatBox, setupBox, runBox);
+      buildSetup(); show(); loadRoster(); loadChat();
     },
-    onShow() { if (!S.running) loadRoster(); },
+    onShow() { if (!S.running) loadRoster(); loadChat(); },
   });
   F.on(NS + 'state', (s) => { S = s; if (pane) show(); if (F.setBadge) F.setBadge('orchestra', s.running ? 1 : 0); });
+  F.on(NS + 'chat', (c) => { C = { ...C, ...c }; if (pane && chatLog) paintChatState(); });
   F.onReady(async () => { try { S = await call('state'); if (pane) show(); } catch { /* feature missing */ } });
   F.addCommand('orchestra', 'stop', 'Open the Orchestra tab (or stop the run)', (a) => { if ((a || '').trim() === 'stop') return call('stop').catch(fail); F.showSideTab('orchestra'); });
   F.addMenuItem('Agents', { id: 'agents.orchestra', label: 'Orchestra...', action: () => F.showSideTab('orchestra') });

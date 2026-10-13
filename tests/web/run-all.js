@@ -3,10 +3,10 @@
 const { spawnSync } = require('child_process');
 const path = require('path');
 const list = [
-  'tests/claude-unit.js', 'tests/team-unit.js', 'tests/resources-unit.js', 'tests/comms-unit.js', 'tests/cpu-tune-unit.js', 'tests/orchestrator-unit.js', 'tests/cli-unit.js',
+  'tests/claude-unit.js', 'tests/team-unit.js', 'tests/resources-unit.js', 'tests/comms-unit.js', 'tests/cpu-tune-unit.js', 'tests/orchestrator-unit.js', 'tests/orchestrator-chat-unit.js', 'tests/cli-unit.js',
   'tests/web/boot-smoke.js', 'tests/web/features-smoke.js', 'tests/web/editor-regress.js', 'tests/web/layout-regress.js',
   'tests/web/dock-gui.js', 'tests/web/panes-gui.js', 'tests/web/team-main.js', 'tests/web/team-gui.js',
-  'tests/web/claude-gui.js', 'tests/web/resources-gui.js', 'tests/web/orchestra-gui.js',
+  'tests/web/claude-gui.js', 'tests/web/resources-gui.js', 'tests/web/orchestra-gui.js', 'tests/web/orchestra-chat-gui.js', 'tests/web/orchestra-chat-restore.js',
 ];
 let bad = 0;
 for (const f of list) {

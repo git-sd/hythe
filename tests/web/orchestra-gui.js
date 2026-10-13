@@ -13,6 +13,8 @@ const { verify } = require('../../src/comms');
   try {
     await h.open(); await sleep(700);
     await js(() => [...document.querySelectorAll('#railTop .rbtn')].find((b) => b.title === 'Orchestra').click()); await sleep(1200);
+    check('the Orchestra tab opens in CHAT mode; the classic form is one click away', await js(() => document.querySelector('.orMode.on')?.textContent === 'Chat' && !document.querySelector('.orChatBox').hidden && document.querySelector('.orSetup').hidden));
+    await js(() => [...document.querySelectorAll('.orMode')].find((b) => b.textContent === 'Task form').click()); await sleep(500);
     check('Orchestra tab shows four role selectors', await js(() => document.querySelectorAll('.orRole select').length === 4));
     check('the speed specialist (smallest installed model) is picked for the fast helper automatically', await js(() => /Automatic: fake-fast:1b/.test(document.querySelectorAll('.orRole select')[3].options[0].textContent)), await js(() => [...document.querySelectorAll('.orRole select')].map((s) => s.options[0].textContent)));
     check('suggested specialist models are listed with a download button, never installed automatically', await js(() => document.querySelectorAll('.orSug').length >= 2 && [...document.querySelectorAll('.orSug button')].some((b) => b.textContent === 'Download')));
