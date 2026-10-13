@@ -8,7 +8,7 @@ const http = require('http');
 function startFake(opts = {}) {
   const fake = {
     requests: [], inflight: 0, maxInflight: 0, aborted: 0, port: 0, url: '',
-    models: opts.models || ['qwen3.5:9b', 'fake-b:1b', 'nothink:1b'],
+    models: opts.models || ['qwen3.5:9b', 'fake-b:1b', 'nothink:1b'], sizes: opts.sizes || {}, loaded: opts.loaded || [],
     script: null,
     close: () => new Promise((r) => { if (server.closeAllConnections) server.closeAllConnections(); server.close(r); }),
   };
@@ -36,7 +36,11 @@ function startFake(opts = {}) {
   const server = http.createServer((req, res) => {
     const json = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
     if (req.url === '/api/version') return json(200, { version: '0.0.0-fake' });
-    if (req.url === '/api/tags') return json(200, { models: fake.models.map((name) => ({ name, model: name })) });
+    if (req.url === '/api/tags') return json(200, { models: fake.models.map((name) => ({ name, model: name, size: fake.sizes[name] || 5.5e9 })) });
+    if (req.url === '/api/ps') return json(200, { models: fake.loaded || [] });
+    if (req.url === '/api/show') {
+      return json(200, { details: { parameter_size: '9B', quantization_level: 'Q4_K_M' }, capabilities: ['completion', 'tools', 'thinking'], parameters: '', template: '', model_info: { 'general.architecture': 'llama', 'llama.block_count': 32, 'llama.attention.head_count': 32, 'llama.attention.head_count_kv': 8, 'llama.embedding_length': 4096, 'llama.context_length': 131072 } });
+    }
     if (req.url !== '/api/chat') return json(404, { error: 'not found' });
     let raw = '';
     req.on('data', (d) => { raw += d; });

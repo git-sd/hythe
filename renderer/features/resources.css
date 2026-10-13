@@ -1,0 +1,38 @@
+/* resources view in the Models tab. Flat, solid colours, theme variables only. */
+.mgSeg { flex: none; display: flex; gap: 0; margin: 0 0 8px; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.mgSegBtn { flex: 1; border: 0; border-radius: 0; background: var(--panel2); color: var(--muted); padding: 5px 8px; }
+.mgSegBtn.on { background: var(--accent); color: #fff; }
+.mgView { flex: 1; min-height: 0; overflow: auto; font-size: 13px; padding-right: 2px; }
+.rsSec { margin-bottom: 14px; }
+.rsTitle { font-weight: 600; margin-bottom: 4px; }
+.rsNote { color: var(--muted); font-size: 12px; margin: 3px 0; overflow-wrap: anywhere; }
+.rsBad { color: var(--bad); font-size: 12px; margin: 4px 0; overflow-wrap: anywhere; }
+.rsRow { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; row-gap: 3px; align-items: center; margin: 6px 0; }
+.rsRow .rsBar { grid-column: 1 / -1; grid-row: 2; }
+.rsName { color: var(--muted); font-size: 12px; }
+.rsVal { font-size: 12px; text-align: right; }
+.rsBar { height: 8px; background: var(--panel2); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.rsFill { height: 100%; width: 0; background: var(--accent); }
+.rsFill.hot { background: var(--bad); }
+.rsLoaded { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 4px 0; }
+.rsRowWrap { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 4px 0; }
+.rsSel, .rsNum { min-width: 0; max-width: 100%; }
+.rsNum { width: 80px; }
+.rsHead { font-weight: 600; margin-top: 8px; }
+.rsStack { display: flex; height: 12px; margin: 6px 0 2px; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; background: var(--panel2); }
+.rsSeg.gpu { background: var(--accent); }
+.rsSeg.ram { background: var(--muted); }
+.rsSeg.over { background: var(--bad); }
+.rsLegend { font-size: 12px; color: var(--muted); display: flex; align-items: center; flex-wrap: wrap; gap: 2px; }
+.rsDot { display: inline-block; width: 8px; height: 8px; margin-right: 4px; border-radius: 2px; }
+.rsDot.gpu { background: var(--accent); } .rsDot.ram { background: var(--muted); } .rsDot.over { background: var(--bad); }
+.rsVerdict { margin: 6px 0; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--panel2); }
+.rsVerdict.ok { border-color: var(--ok); }
+.rsVerdict.warn { border-color: var(--accent); }
+.rsVerdict.bad { border-color: var(--bad); color: var(--bad); }
+.rsCtl { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.rsField { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+.rsField input[type=number], .rsField input[type=text] { width: 100%; }
+.rsCheck { display: flex; gap: 6px; align-items: center; font-size: 12px; }
+.mgMain { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.mgMain[hidden], .mgView[hidden] { display: none; }

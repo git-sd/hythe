@@ -45,7 +45,7 @@ Faber.register('models', (F) => {
   }
   function badgesFor(m, mem) {
     const out = [];
-    if (m.online) { out.push(badge('online', 'warn', 'Your prompts and file contents are sent to Anthropic over the internet')); out.push(badge('tools', '')); return out; }
+    if (m.online) { out.push(badge('online', 'online', 'Your prompts and file contents are sent to Anthropic over the internet')); out.push(badge('tools', '')); return out; }
     if (m.loaded) out.push(badge('loaded', 'ok', 'Currently loaded in memory'));
     if (m.caps === null) out.push(badge('capabilities unknown', 'dim'));
     else {
@@ -673,7 +673,28 @@ Faber.register('models', (F) => {
     btns.append(bv, bi, bd);
     const msg = el('div', 'mgMsg');
     const list = el('div', 'mgList');
-    root.append(head, disk, btns, msg, list);
+    // other features (resources) add views next to the model list through F.modelsViews
+    const mainBox = el('div', 'mgMain');
+    mainBox.append(head, disk, btns, msg, list);
+    const extra = F.modelsViews || [];
+    if (extra.length) {
+      const seg = el('div', 'mgSeg');
+      const boxes = { models: mainBox };
+      const show = (id) => {
+        for (const [k, b] of Object.entries(boxes)) b.hidden = k !== id;
+        for (const b of seg.children) b.classList.toggle('on', b.dataset.id === id);
+        const v = extra.find((x) => x.id === id);
+        if (v && v.onShow) v.onShow(boxes[id]);
+        for (const x of extra) if (x.id !== id && x.onHide) x.onHide();
+      };
+      const mk = (id, title) => { const b = el('button', 'mgSegBtn', title); b.dataset.id = id; b.onclick = () => show(id); seg.appendChild(b); };
+      mk('models', 'Models');
+      for (const v of extra) { mk(v.id, v.title); boxes[v.id] = el('div', 'mgView'); boxes[v.id].hidden = true; v.render(boxes[v.id]); }
+      root.append(seg, mainBox, ...extra.map((v) => boxes[v.id]));
+      F.showModelsView = show;
+      mainBox.hidden = false;
+      seg.firstChild.classList.add('on');
+    } else root.append(mainBox);
     function paint() {
       const d = S.data;
       list.innerHTML = ''; msg.innerHTML = '';

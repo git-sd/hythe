@@ -12,4 +12,4 @@
 .clInd button { padding: 2px 8px; font-size: 12px; }
 .clInd.use .clTxt { background: var(--cl-warn); color: var(--cl-warn-text); font-weight: 600; border-color: var(--cl-warn); }
 .clInd.idle .clTxt { background: transparent; color: var(--cl-warn); border-color: var(--cl-warn); }
-.mBadge.warn { background: #f59e0b; color: #1a1200; }
+.mBadge.online { background: #f59e0b; color: #1a1200; }
