@@ -1,0 +1,9 @@
+CPU: Intel(R) Xeon(R) Processor @ 2.10GHz: 4 physical cores, 4 threads (lscpu). Options: {"num_thread":4}
+model                           file quant     write t/s   read t/s    load
+qwen3.5:0.8b                  0.5 GB Q4_K_M        26.13      182.9    4.9s
+qwen3.5-q:0.8b-q8             0.8 GB Q8_0          35.28      187.1    6.2s
+qwen3.5-q:0.8b-bf16           1.4 GB BF16          15.99      105.2    5.4s
+CPU: Intel(R) Xeon(R) Processor @ 2.10GHz: 4 physical cores, 4 threads (lscpu), features: avx2 avx512 vnni amx. Options: {"num_thread":4}
+model                           file quant     write t/s   read t/s    load
+qwen3.5:9b                    5.3 GB Q4_K_M          3.7         23   28.0s
+qwen3.5-q:9b-q8               8.9 GB Q8_0           4.84       24.4   26.6s

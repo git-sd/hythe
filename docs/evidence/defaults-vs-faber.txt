@@ -1,0 +1,11 @@
+=== Ollama defaults (no env, no options)
+4
+qwen3.5:9b                    5.3 GB Q4_K_M         3.88       39.5   11.4s
+qwen3.5:9b                    5.3 GB Q4_K_M         3.56     5202.2    0.0s
+n_threads = 4 (n_threads_batch = 4) / 4 | CPU : SSE3 = 1 | SSSE3 = 1 | AVX = 1 | AVX2 = 1 | F16C = 1 | FMA = 1 | BMI2 = 1 | AVX512 = 1 | AVX512_VBMI = 1 | AVX512_VNNI = 1 | AVX512_BF16 = 1 | AMX_INT8 = 1 | LLAMAFILE = 1 | REPACK = 1 | 
+time=2026-10-13T07:37:19.142Z level=INFO source=routes.go:2485 msg="vram-based default context" total_vram="0 B" default_num_ctx=4096
+time=2026-10-13T07:37:20.513Z level=INFO source=llama_server.go:436 msg="starting llama-server" cmd="/tmp/claude-0/ollama-root/usr/lib/ollama/llama-server --model /tmp/claude-0/ollama-models/blobs/sha
+=== Faber profile (FA on, parallel 1, threads 4, ctx 4096)
+qwen3.5:9b                    5.3 GB Q4_K_M         3.77       40.4   10.4s
+qwen3.5:9b                    5.3 GB Q4_K_M         3.56     4988.8    0.0s
+DONE

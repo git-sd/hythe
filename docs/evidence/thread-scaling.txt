@@ -1,0 +1,5 @@
+  num_thread = 4         4 threads: one per physical core.
+   1 threads: 1.17 tokens/s
+   2 threads: 2.22 tokens/s
+   3 threads: 2.95 tokens/s
+   4 threads: 3.78 tokens/s

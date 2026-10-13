@@ -1,0 +1,20 @@
+# Second run (this file's results)
+=== A-fa0-f16 (flash_attention=0 kv=f16)
+model                           file quant     write t/s   read t/s    load
+qwen3.5:9b                    5.3 GB Q4_K_M         3.81       40.2   11.4s
+=== B-fa1-f16 (flash_attention=1 kv=f16)
+model                           file quant     write t/s   read t/s    load
+qwen3.5:9b                    5.3 GB Q4_K_M         3.66         41   10.2s
+=== C-fa1-q8 (flash_attention=1 kv=q8_0)
+model                           file quant     write t/s   read t/s    load
+qwen3.5:9b                    5.3 GB Q4_K_M         3.65       36.7    9.9s
+ALLDONE
+
+# First run, earlier (config C's output was not kept: it read 3.58 write / 34.2 read tokens/s in my notes)
+=== A-fa0-f16 (flash_attention=0 kv=f16)
+qwen3.5:9b                    5.3 GB Q4_K_M         3.75       38.7   12.7s
+=== B-fa1-f16 (flash_attention=1 kv=f16)
+qwen3.5:9b                    5.3 GB Q4_K_M         3.92         40   15.2s
+=== C-fa1-q8 (flash_attention=1 kv=q8_0)
+Error: Cannot reach Ollama at http://127.0.0.1:11555. Start it (open the Ollama app or run "ollama serve").
+ALLDONE3

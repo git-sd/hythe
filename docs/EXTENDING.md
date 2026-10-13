@@ -96,11 +96,20 @@ feature veto `write_file` / `edit_file` (team file claims); it does NOT cover `r
 - `src/orchestrator.js`: conductor -> JSON plan -> steps on specialist agents (each its own model) -> reviewer verdict + rework -> final
   answer. Plain Node (no Electron): the same code runs in the app (`src/features/orchestra.js`) and from `tools/orchestra-cli.js`.
   Agents take turns per agent; `concurrency` (default 1, the right value for a CPU) bounds how many models run at once.
+  Rules learned from REAL small models (see docs/REAL-MODEL-RESULTS.md), each visible in the trace when it fires:
+  the conductor has no tools and gets a project listing in its prompt (a tool call during planning swallowed the JSON plan);
+  a step that starts with a change/run verb but names a read-only agent is moved to the coder; the tiny fast model only sees its own
+  step, not the whole task; after the steps ran, any step whose tools really wrote files and has no reviewer step after it gets one
+  (`autoReview`, on by default); every step records what its tools REALLY did (`step.actions`) and the conductor is told to flag
+  report claims that the tool list does not show.
 - `src/model-roster.js`: role -> model from what is installed (code specialist, smallest tool-capable model as the speed helper,
   a reviewer different from the coder), with optional download SUGGESTIONS (never installed automatically).
 - `src/cpu-tune.js`: core detection, profile (threads, context, mmap, keep_alive, Ollama env vars), quantization advice, `benchmark()`
-  and `autoTune()` against Ollama. Estimates are labelled estimates; the benchmark measures the real speed.
-- Command line: `node tools/orchestra-cli.js run "<task>" | roster | tune --model M [--autotune] | demo`.
+  and `autoTune()` against Ollama, `maxLoadedModels()` (how many roster models fit in RAM together). Estimates are labelled estimates;
+  the benchmark measures the real speed. Advice must follow measurements, not folklore: on a CPU with VNNI/AMX, Q8_0 measured FASTER
+  than Q4_K_M, and a quantized KV cache measured SLOWER (it only saves memory), so both rules are feature- and RAM-dependent.
+- `src/agent.js` retries a request once when Ollama's model runner died before answering ("signal: killed", "unexpected EOF"), and says so.
+- Command line: `node tools/orchestra-cli.js run "<task>" | roster | tune --model M [--autotune] | bench --models a,b | verify <trace.jsonl> | demo`.
 
 ## Online provider (Claude)
 
