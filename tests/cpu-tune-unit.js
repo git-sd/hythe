@@ -24,11 +24,12 @@ const check = (n, ok, x) => { ok ? pass++ : fail++; console.log((ok ? 'PASS ' : 
   check('Q8_0 on a CPU without int8 instructions: flagged slower, with a pointer to measure', T.quantAdvice({ quant: 'Q8_0', paramsB: 9, weights: 9.5 * GB }).level === 'slow' && /Benchmark/.test(T.quantAdvice({ quant: 'Q8_0', paramsB: 9 }).text));
 check('Q8_0 on a CPU WITH vnni/amx: not flagged slow, and says why (measured on a Xeon with AMX)', (() => { const a = T.quantAdvice({ quant: 'Q8_0', paramsB: 0.8, features: ['avx512', 'vnni', 'amx'] }); return a.level === 'ok' && /vnni, amx/.test(a.text) && /faster on small models/.test(a.text); })());
 check('CPU feature flags are parsed from lscpu', (() => { const l = T.parseLscpu('Core(s) per socket: 4\nSocket(s): 1\nThread(s) per core: 1\nFlags: fpu avx2 avx512f avx512_vnni amx_int8 amx_bf16'); return l.features.join() === 'avx2,avx512,vnni,amx'; })());
-  check('Q4_K_M is "best, nothing to change"', T.quantAdvice({ quant: 'Q4_K_M', paramsB: 9 }).level === 'best');
+  check('Q4_K_M is "best, nothing to change"', T.quantAdvice({ quant: 'Q4_K_M', paramsB: 9 }).level === 'best' && !/Q8_0/.test(T.quantAdvice({ quant: 'Q4_K_M', paramsB: 9 }).text));
+  check('Q4_K_M on a CPU with vnni/amx mentions the measured Q8_0 advantage (4.8 vs 3.7 tokens/s) and the RAM cost', (() => { const a = T.quantAdvice({ quant: 'Q4_K_M', paramsB: 9, features: ['avx512', 'vnni', 'amx'] }); return a.level === 'best' && /4\.8 tokens\/s against 3\.7/.test(a.text) && /1\.7x the file size/.test(a.text); })());
   check('F16/BF16 is flagged slow (unquantized)', T.quantAdvice({ quant: 'F16', paramsB: 9, weights: 18 * GB }).level === 'slow' && T.quantAdvice({ quant: 'BF16', paramsB: 1 }).level === 'slow');
   check('Q2_K: fast but quality warning', T.quantAdvice({ quant: 'Q2_K' }).level === 'fast');
   check('unknown quant gives guidance, not a guess', T.quantAdvice({ quant: '' }).level === 'unknown');
-  check('speed estimate: Q4 9B (6.6 GB) lands in a plausible CPU range', (() => { const e = T.estimateTokPerSec(6.6 * GB); return e.low >= 3 && e.high <= 9 && e.low < e.high; })());
+  check('speed estimate: Q4 9B (6.6 GB) lands in a plausible CPU range, wide enough to include the measured 3.7-4.0 tokens/s of a 5.3 GB 9B on a 4-core server CPU', (() => { const e = T.estimateTokPerSec(6.6 * GB); return e.low >= 2 && e.low <= 3.7 && e.high >= 7 && e.high <= 9 && e.low < e.high; })());
   check('no weights -> no estimate', T.estimateTokPerSec(0) === null);
 
   /* ---- profile ---- */
@@ -94,6 +95,11 @@ check('KV cache q8_0 is recommended only when RAM is tight, with the speed cost 
   const bad = await T.autoTune({ host, model: 'ghost', cpu: { physical: 4, logical: 8 } });
   check('auto-tune stops at the first failing measurement', !bad.ok && bad.table.length === 1);
   check('thread candidates stay within 1..logical and are sorted', (() => { const c = T.threadCandidates({ physical: 2, logical: 4 }); return c.every((n) => n >= 1 && n <= 4) && c.join() === [...c].sort((a, b) => a - b).join(); })());
+
+  /* ---- how many models fit in RAM together (the roster) ---- */
+  const rosterGB = [5.7, 2.7, 2.5, 0.5].map((x) => x * GB);
+  check('maxLoadedModels: the real 16 GB roster (9B + 4B + 4B + 0.8B) fits two at a time', T.maxLoadedModels({ sizes: rosterGB, ramTotal: 15.7 * GB }).max === 2, T.maxLoadedModels({ sizes: rosterGB, ramTotal: 15.7 * GB }));
+  check('maxLoadedModels: small RAM -> 1, never 0; big RAM -> all of them', T.maxLoadedModels({ sizes: rosterGB, ramTotal: 8 * GB }).max === 1 && T.maxLoadedModels({ sizes: rosterGB, ramTotal: 64 * GB }).max === 4 && T.maxLoadedModels({ sizes: [], ramTotal: 16 * GB }).max === 1);
 
   server.close();
   console.log(`\n${pass}/${pass + fail} passed`);

@@ -10,11 +10,12 @@
 //   node tools/orchestra-cli.js tune --model <model> [--host <url>] [--autotune] [--candidates 1,2,3,4] [--tokens 48]
 //   node tools/orchestra-cli.js bench --models <a,b,c> [--threads N] [--tokens 48] [--long <prompt tokens>] [--ctx N] [--host <url>]   (same options, one row per model: compare quantizations or sizes)
 //   node tools/orchestra-cli.js demo                      (scripted models, no Ollama needed)
+//   node tools/orchestra-cli.js verify <trace.jsonl> [--show] [--full]   (check that a saved trace was not altered; --show prints every message)
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const readline = require('readline');
-const { createLine } = require('../src/comms');
+const { createLine, verify } = require('../src/comms');
 const { createOrchestrator } = require('../src/orchestrator');
 const { resolveRoster } = require('../src/model-roster');
 const cpuTune = require('../src/cpu-tune');
@@ -27,7 +28,7 @@ for (let i = 1; i < argv.length; i++) {
   const a = argv[i];
   if (a.startsWith('--')) {
     const k = a.slice(2);
-    if (['full', 'color', 'autotune'].includes(k)) flags[k] = true; else flags[k] = argv[++i];
+    if (['full', 'color', 'autotune', 'show'].includes(k)) flags[k] = true; else flags[k] = argv[++i];
   } else rest.push(a);
 }
 const host = String(flags.host || process.env.OLLAMA_HOST_URL || 'http://127.0.0.1:11434').replace(/\/+$/, '');
@@ -58,6 +59,8 @@ async function cmdRoster() {
   for (const m of inst) say(`  ${m.name.padEnd(28)} ${gb(m.size).padStart(8)}  ${m.params} ${m.quant}  caps: ${m.caps ? m.caps.join(',') : 'unknown'}`);
   say('\nRoster (role -> model):');
   for (const o of r.roster) say(`  ${o.role.padEnd(11)} ${o.model.padEnd(28)} (${o.source}: ${o.note})`);
+  const ml = cpuTune.maxLoadedModels({ sizes: [...new Set(r.roster.map((o) => o.model))].map((n) => (inst.find((x) => x.name === n) || {}).size || 0), ramTotal: os.totalmem() });
+  say(`\nMemory: the roster uses ${new Set(r.roster.map((o) => o.model)).size} different models, ${ml.allGB} GB if all stay loaded; this PC's budget is ${ml.budgetGB} GB (70% of RAM). Run Ollama with OLLAMA_MAX_LOADED_MODELS=${ml.max} (estimate; more models than that take turns, each swap costs 10 to 30 s).`);
   if (r.suggestions.length) {
     say('\nSpecialists you could add (optional, approximate sizes, check ollama.com/library):');
     for (const s of r.suggestions) say(`  ollama pull ${s.model.padEnd(22)} ${s.role.padEnd(10)} ~${s.sizeGB} GB  ${s.why}`);
@@ -115,6 +118,18 @@ async function cmdBench() {
   }
 }
 
+// Check a saved trace file: the hash chain must be unbroken. Exit code 0 = intact, 3 = altered or incomplete.
+function cmdVerify() {
+  const file = rest[0];
+  if (!file) throw new Error('Usage: verify <trace.jsonl> [--show] [--full]');
+  const entries = fs.readFileSync(path.resolve(file), 'utf8').split('\n').filter(Boolean).map((l, i) => { try { return JSON.parse(l); } catch { throw new Error(`Line ${i + 1} of ${file} is not valid JSON.`); } });
+  if (flags.show) { const line = createLine({ clip: 500, color }); for (const e of entries) say(line.format(e, { full: !!flags.full })); say(); }
+  const v = verify(entries);
+  const who = [...new Set(entries.filter((e) => e.kind === 'usage').map((e) => e.model).filter(Boolean))];      // models that really generated something (not just named in the roster)
+  say(v.ok ? `Trace intact: ${v.count} entries, chain unbroken, ${who.length} model(s) generated text: ${who.join(', ')}.` : `Trace NOT intact at entry #${v.brokenAt}: ${v.reason}`);
+  process.exit(v.ok ? 0 : 3);
+}
+
 async function cmdRun() {
   const task = rest.join(' ').trim();
   if (!task) throw new Error('Usage: run "<task>" [--dir <folder>] ...');
@@ -135,6 +150,10 @@ async function cmdRun() {
   say(`Ollama:  ${host}`);
   say('Roster:');
   for (const o of r.roster.filter((x) => ['conductor', 'coder', 'reviewer', 'fast'].includes(x.role))) say(`  ${o.role.padEnd(11)} ${pick(o.role).padEnd(28)} (${o.source}: ${o.note})`);
+  const used = ['conductor', 'coder', 'reviewer', 'fast'].map((role) => pick(role));
+  const sizeOf = (n) => (inst.find((x) => x.name === n || x.name === n + ':latest') || {}).size || 0;
+  const ml = cpuTune.maxLoadedModels({ sizes: [...new Set(used)].map(sizeOf), ramTotal: os.totalmem() });
+  say(`Memory:  ${new Set(used).size} different models, ${ml.allGB} GB if all stay loaded; this PC's budget is ${ml.budgetGB} GB (70% of RAM). Ollama should run with OLLAMA_MAX_LOADED_MODELS=${ml.max} (estimate).`);
   say('-'.repeat(78));
   // answers come from stdin, one line each; lines that arrive early are queued, and end-of-input means "no"
   const rl = readline.createInterface({ input: process.stdin });
@@ -173,6 +192,7 @@ async function cmdRun() {
     else if (cmd === 'roster') await cmdRoster();
     else if (cmd === 'tune') await cmdTune();
     else if (cmd === 'bench') await cmdBench();
+    else if (cmd === 'verify') cmdVerify();
     else if (cmd === 'demo') { const { runDemo } = require('../tests/orchestration-demo'); const r = await runDemo({ color, full: flags.full }); await r.fake.close(); process.exit(r.result.ok && r.testOk ? 0 : 1); }
     else {
       say(fs.readFileSync(__filename, 'utf8').split('\n').filter((l) => l.startsWith('//')).map((l) => l.slice(3)).join('\n'));

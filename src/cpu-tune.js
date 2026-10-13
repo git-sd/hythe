@@ -67,7 +67,9 @@ function detectCpu({ os = require('os'), execFile = require('child_process').exe
 
 /* ---------- speed estimate ---------- */
 // tokens/s ~ usable memory bandwidth / bytes read per token. Usable bandwidth for a typical laptop or desktop: 25-50 GB/s.
-function estimateTokPerSec(weightsBytes, bandwidthGBs = [25, 50]) {
+// Rough only. Token speed on a CPU is about (memory bandwidth) / (model file size). Measured: a 9B Q4_K_M (5.3 GiB) ran at 3.7 to 4.0
+// tokens/s on a 4-core 2.1 GHz server CPU, i.e. about 20 GiB/s effective, so the low end is 15, not the 25 a laptop might reach.
+function estimateTokPerSec(weightsBytes, bandwidthGBs = [15, 50]) {
   if (!weightsBytes) return null;
   const g = weightsBytes / GB;
   const r = (bw) => Math.round((bw / g) * 10) / 10;
@@ -89,7 +91,7 @@ function quantAdvice({ quant, paramsB, weights, features = [] }) {
   if (bits >= 12) return { level: 'slow', text: `${quant} is the unquantized size: every token reads ${weights ? (weights / GB).toFixed(1) + ' GB' : 'all the weights'}. It is almost always the slowest and uses the most memory. Q8_0 or Q4_K_M are much lighter (Q4_K_M ${size(4.9)}).` + measure };
   if (bits >= 8) return { level: int8 ? 'ok' : 'slow', text: `${quant} keeps the best quality. ${int8 ? 'This CPU has int8 instructions (' + features.filter((x) => x === 'vnni' || x === 'amx').join(', ') + '), so Q8_0 can be as fast as Q4 or faster on small models, but a big model is still limited by memory.' : 'On a CPU without int8 instructions it is usually slower than Q4 because it reads about twice the data.'} Q4_K_M would be ${size(4.9)}.` + measure };
   if (bits >= 5) return { level: 'ok', text: `${quant} is a quality-leaning choice. Q4_K_M (${size(4.9)}) is smaller and usually faster for big models.` + measure };
-  if (bits >= 4.2) return { level: 'best', text: `${quant} is the usual best balance of size, quality and speed for a CPU, especially for larger models (memory-bound).` + measure };
+  if (bits >= 4.2) return { level: 'best', text: `${quant} is the usual best balance of size, quality and speed for a CPU, especially for larger models (memory-bound).${int8 ? ' Measured on a CPU with ' + features.filter((x) => x === 'vnni' || x === 'amx').join(' and ') + ': a 9B in Q8_0 wrote 4.8 tokens/s against 3.7 for Q4_K_M (+30%) at 1.7x the file size, so if you have the RAM it is worth a Benchmark here.' : ''}` + measure };
   return { level: 'fast', text: `${quant} is very small, but quality drops noticeably. Use it only for simple jobs (for example as the fast helper model).` + measure };
 }
 
@@ -109,8 +111,9 @@ function cpuProfile({ cpu, ram, model, goal = 'cpu', hasGpu = false } = {}) {
   if (need(ctx) > avail) warnings.push(`This model needs about ${(need(ctx) / GB).toFixed(1)} GB but only ${(ram.free / GB).toFixed(1)} GB of RAM is free. Close other programs or use a smaller model / quantization, or Windows will swap to disk and everything will crawl.`);
   const options = { num_thread: threads, num_ctx: ctx, use_mmap: true, keep_alive: '30m' };
   if (goal === 'cpu' || !hasGpu) options.num_gpu = 0;
-  // Measured on a real 9B model on a CPU: flash attention is a small win (+3 to 5%), but a quantized KV cache (q8_0) is a
-  // memory saving that COSTS speed (-9% writing, -15% reading). So it is only recommended when RAM is tight.
+  // Measured twice on a real 9B on a 4-core CPU (evidence/flash-attention-kv-cache.txt): flash attention made no difference to speed
+  // (+4% in one run, -4% in the next: noise), and a q8_0 KV cache left writing speed alone but made reading the prompt 10 to 15% slower.
+  // So flash attention is kept for its memory behaviour, and the quantized cache is only recommended when RAM is tight.
   const tight = need(ctx) > avail * 0.85;
   const env = {
     OLLAMA_FLASH_ATTENTION: '1',
@@ -126,8 +129,8 @@ function cpuProfile({ cpu, ram, model, goal = 'cpu', hasGpu = false } = {}) {
     num_gpu: options.num_gpu === 0 ? 'Forces CPU-only. Remove this if your graphics card can hold the whole model: a GPU is far faster.' : '',
   };
   const envWhy = {
-    OLLAMA_FLASH_ATTENTION: 'Cheaper attention: measured +3 to 5% speed and less memory at long contexts.',
-    OLLAMA_KV_CACHE_TYPE: 'Halves the context memory, but measured 9 to 15% SLOWER. Only recommended because RAM is tight here.',
+    OLLAMA_FLASH_ATTENTION: 'Uses less memory as the context grows, and Ollama needs it for a quantized context cache. Measured: no change in speed on a CPU (within noise).',
+    OLLAMA_KV_CACHE_TYPE: 'Halves the context memory, but reading your prompt measured 10 to 15% SLOWER (writing speed unchanged). Only recommended because RAM is tight here.',
     OLLAMA_NUM_PARALLEL: 'One request at a time: parallel requests multiply memory use and slow each other on a CPU.',
     OLLAMA_MAX_LOADED_MODELS: 'One model in RAM at a time. With several specialist models they take turns, and each swap costs about 10 to 30 seconds on a CPU (measured). Raise it to 2 to 4 for orchestrations if all those models fit in RAM.',
   };
@@ -208,4 +211,16 @@ async function autoTune({ host, model, cpu, base = {}, candidates, numPredict = 
 // A prompt of roughly `tokens` tokens, for measuring how fast the model READS (an agent sends long prompts).
 const longPrompt = (tokens) => Array.from({ length: Math.max(1, Math.round(tokens / 11)) }, (_, i) => `Item ${i}: the quick brown fox jumps over the lazy dog.`).join('\n') + '\n\nSay OK.';
 
-module.exports = { longPrompt, parseFeatures, detectCpu, guessCores, parseLscpu, parseCim, estimateTokPerSec, quantAdvice, bitsOf, cpuProfile, envCommands, benchmark, autoTune, threadCandidates, GB };
+// How many of these models can stay in RAM together? Each needs its file plus about 1 GB for the context and compute buffers, and the OS
+// and the app need the rest, so the budget is 70% of total RAM. Largest first. An estimate: on a 16 GB PC an Ollama server with four
+// models resident (11 GB of files) had its model runner killed by the system twice during a real orchestration run.
+function maxLoadedModels({ sizes, ramTotal }) {
+  const need = (sizes || []).filter((x) => x > 0).map((x) => x + 1 * GB).sort((a, b) => b - a);
+  const budget = (ramTotal || 0) * 0.7;
+  let used = 0, max = 0;
+  for (const n of need) { if (used + n > budget) break; used += n; max++; }
+  const total = need.reduce((a, b) => a + b, 0);
+  return { max: Math.max(1, Math.min(max, need.length || 1)), budgetGB: +(budget / GB).toFixed(1), allGB: +(total / GB).toFixed(1), models: need.length };
+}
+
+module.exports = { longPrompt, parseFeatures, detectCpu, guessCores, parseLscpu, parseCim, estimateTokPerSec, quantAdvice, bitsOf, cpuProfile, envCommands, benchmark, autoTune, threadCandidates, maxLoadedModels, GB };

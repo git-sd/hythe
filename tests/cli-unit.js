@@ -43,6 +43,21 @@ const cli = (args, input) => new Promise((resolve) => {
   check('--mode ask: asks for approval on stdin and a "no" blocks the write', /APPROVAL:/.test(ask.out) && !fs.existsSync(path.join(askDir, 'fizzbuzz.js')), ask.out.slice(0, 300));
   check('--mode ask: the question and the denial are both in the trace output', /QUESTION/.test(ask.out) && /ANSWER\s+owner/.test(ask.out) && /denied/.test(ask.out));
 
+  const ver = await cli(['verify', trace]);
+  check('verify: an untouched saved trace is reported intact, with the models in it', ver.code === 0 && /Trace intact: \d+ entries, chain unbroken, 4 model\(s\)/.test(ver.out), ver);
+  const shown = await cli(['verify', trace, '--show']);
+  check('verify --show: reprints the whole trace, then the verdict', /#001/.test(shown.out) && /FINAL/.test(shown.out) && /Trace intact/.test(shown.out));
+  const forged = path.join(os.tmpdir(), `faber-cli-forged-${Date.now()}.jsonl`);
+  const lines = fs.readFileSync(trace, 'utf8').trim().split('\n');
+  const k = lines.findIndex((l) => JSON.parse(l).kind === 'result');
+  const edited = JSON.parse(lines[k]); edited.text = 'VERDICT: APPROVED (edited afterwards)'; lines[k] = JSON.stringify(edited);
+  fs.writeFileSync(forged, lines.join('\n') + '\n');
+  const ver2 = await cli(['verify', forged]);
+  check('verify: an edited message is caught (exit 3) and the entry is named', ver2.code === 3 && /NOT intact at entry #\d+/.test(ver2.out), ver2);
+  fs.writeFileSync(forged, lines.filter((_, i) => i !== k).join('\n') + '\n');
+  check('verify: a deleted message is caught too', (await cli(['verify', forged])).code === 3);
+  check('verify: a missing file gives a readable error', (await cli(['verify', path.join(os.tmpdir(), 'nope.jsonl')])).code === 1);
+
   const roster = await cli(['roster', '--host', host]);
   check('roster: lists installed models with sizes and the resolved roster', roster.code === 0 && /Installed models \(4\)/.test(roster.out) && /fast\s+fake-fast:1b/.test(roster.out), roster.out.slice(0, 300));
   check('roster: suggests optional specialists with pull commands', /ollama pull /.test(roster.out));
