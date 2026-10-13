@@ -45,6 +45,8 @@ async function launch(opts = {}) {
     },
     session: { defaultSession: { webRequest: { onBeforeRequest() {} }, setPermissionRequestHandler() {} } },
     Menu: { setApplicationMenu() {} },
+    shell: { openExternal: async () => {}, openPath: async () => '' },
+    clipboard: { writeText(t) { electron.clipboard.last = t; } },
     safeStorage: opts.safeStorage || {
       isEncryptionAvailable: () => true,
       encryptString: (s) => Buffer.from('enc:' + Buffer.from(s).toString('base64')),
