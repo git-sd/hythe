@@ -9,7 +9,7 @@ function startFake(opts = {}) {
   const fake = {
     requests: [], generates: [], inflight: 0, maxInflight: 0, aborted: 0, port: 0, url: '',
     models: opts.models || ['qwen3.5:9b', 'fake-b:1b', 'nothink:1b'], sizes: opts.sizes || {}, loaded: opts.loaded || [],
-    script: null,
+    script: null, killFirst: 0,
     close: () => new Promise((r) => { if (server.closeAllConnections) server.closeAllConnections(); server.close(r); }),
   };
 
@@ -61,6 +61,7 @@ function startFake(opts = {}) {
       const body = JSON.parse(raw);
       const rec = { model: body.model, think: body.think, options: body.options, keep_alive: body.keep_alive, messages: body.messages, tools: (body.tools || []).map((t) => t.function.name), stream: body.stream, t0: Date.now(), aborted: false, system: body.messages[0] && body.messages[0].content };
       fake.requests.push(rec);
+      if (fake.killFirst > 0) { fake.killFirst--; return json(500, { error: 'llama-server process has terminated: signal: killed' }); }   // the runner was killed (out of memory)
       if (/^nothink/.test(body.model) && body.think !== undefined) return json(400, { error: `"${body.model}" does not support thinking` });
       const user = [...body.messages].reverse().find((m) => m.role === 'user');
       if (user && /\[err\]\s*$/.test(user.content)) return json(500, { error: 'boom from fake' });
@@ -86,7 +87,7 @@ function startFake(opts = {}) {
       if (out.calls && out.calls.length) {
         line({ message: { role: 'assistant', content: '', tool_calls: out.calls.map((c) => ({ function: { name: c.name, arguments: c.args } })) }, done: false });
       }
-      line({ message: { role: 'assistant', content: '' }, done: true, done_reason: out.calls && out.calls.length ? 'tool_calls' : 'stop', total_duration: 900e6, load_duration: 100e6, prompt_eval_count: 50 + body.messages.length * 7, prompt_eval_duration: 200e6, eval_count: Math.max(1, n) * 2, eval_duration: Math.max(1, n) * 2 * 25e6 });
+      line({ message: { role: 'assistant', content: '' }, done: true, done_reason: out.length ? 'length' : out.calls && out.calls.length ? 'tool_calls' : 'stop', total_duration: 900e6, load_duration: 100e6, prompt_eval_count: 50 + body.messages.length * 7, prompt_eval_duration: 200e6, eval_count: Math.max(1, n) * 2, eval_duration: Math.max(1, n) * 2 * 25e6 });
       res.end();
     });
   });

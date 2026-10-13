@@ -125,6 +125,8 @@ function createAgent(opts) {
 
   const offered = () => tools.schemas.filter((t) => (allowedTools ? allowedTools.includes(t.function.name) : true) && tools.offeredTo(t.function.name, id));
 
+  const runnerDied = (e) => (e.status === 500 || !e.status) && /terminated|signal: killed|unexpected EOF/i.test(`${e.body || ''} ${e.message || ''}`);
+
   async function* stream(body, signal) {
     const s = getSettings();
     if (claude.isClaude(body.model)) { yield* claude.stream(body, signal, s); return; }
@@ -199,7 +201,15 @@ function createAgent(opts) {
     logRequest();
     try { await run(); } catch (e) {
       // Model without thinking support: retry once without the flag.
-      if (!claude.isClaude(body.model) && e.status === 400 && /think/i.test(e.body || '')) { delete body.think; logRequest('without think'); await run(); } else throw e;
+      if (!claude.isClaude(body.model) && e.status === 400 && /think/i.test(e.body || '')) { delete body.think; logRequest('without think'); await run(); }
+      // Ollama's model runner died before answering (seen on a 16 GB PC with several models loaded: "signal: killed", "unexpected EOF").
+      // The next request starts a fresh runner, so try once more, and say so.
+      else if (!claude.isClaude(body.model) && runnerDied(e) && !content && !thinking && !calls.length && !signal.aborted) {
+        emit({ type: 'notice', text: `Ollama's model runner stopped (${String(e.body || e.message).slice(0, 160)}). Starting it again and retrying this request once.` });
+        logRequest('runner restarted');
+        await new Promise((r) => setTimeout(r, 2000));
+        await run();
+      } else throw e;
     }
     if (debugSink) {
       const f = final || {};

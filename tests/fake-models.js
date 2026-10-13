@@ -40,7 +40,6 @@ async function startPersonaFake(opts = {}) {
     switch (body.model) {
       case MODELS.conductor: {
         if (/Reply with ONLY a JSON/.test(text)) {
-          if (n === 0) return call('list_dir', { path: '.' });
           if (opts.badPlan) return { content: 'Sure! Here is my plan: first do it, then check it.' };
           const plan = { steps: [
             { id: 's1', agent: 'coder', instruction: 'Create fizzbuzz.js exporting fizzbuzz(n) that returns an array of strings for 1..n (Fizz, Buzz, FizzBuzz).', depends_on: [] },
@@ -49,6 +48,8 @@ async function startPersonaFake(opts = {}) {
             { id: 's4', agent: 'coder', instruction: 'Create README.md using the description from the previous step.', depends_on: ['s3'] },
             { id: 's5', agent: 'reviewer', instruction: 'Review fizzbuzz.js, test.js and README.md against the task.', depends_on: ['s1', 's2', 's4'] },
           ] };
+          if (opts.fastRuns) plan.steps[2].instruction = 'Run node test.js and report the output.';   // the read-only fast model is asked to run something
+          if (opts.noReviewStep) plan.steps.pop();        // a conductor that ignores "end with a reviewer step" (a real 9B model did)
           return { content: 'Here is the plan:\n```json\n' + JSON.stringify(plan, null, 2) + '\n```' };
         }
         if (/All steps are finished/.test(text)) return { content: 'FINAL: Created fizzbuzz.js, test.js and README.md. The reviewer approved after one rework (a usage example was added to the README).' };
@@ -56,6 +57,11 @@ async function startPersonaFake(opts = {}) {
         return { content: 'ok' };
       }
       case MODELS.coder: {
+        if (opts.coderSaysDone && (step === 's4' || /No file has been written or edited yet/.test(text))) return { content: 'Done, README.md created.' };   // claims a change it never made, even when asked again
+        if (/No file has been written or edited yet/.test(text)) return n === 0 ? call('write_file', { path: 'README.md', content: '# FizzBuzz\n\nfizzbuzz.js exports fizzbuzz(n); test.js checks it.\n' }) : { content: 'Created README.md now.' };
+        if (/^continue$/.test(text.trim())) return n === 0 ? call('write_file', { path: 'README.md', content: '# FizzBuzz\n\nfizzbuzz.js exports fizzbuzz(n); test.js checks it.\n' }) : { content: 'Created README.md after continuing.' };
+        if (step === 's4' && opts.coderLazyOnce) return { content: 'Done, README.md created.' };                      // claims a change it never made (the first time)
+        if (step === 's4' && opts.coderCutOff) return { content: '', length: true };                                  // hit the token limit before saying or doing anything
         if (/asked for changes/.test(text)) {
           if (n === 0) seen.coderReworks++;
           if (n === 0) return call('write_file', { path: 'README.md', content: '# FizzBuzz\n\nfizzbuzz.js exports fizzbuzz(n); test.js checks it.\n\n## Usage\n\n    const { fizzbuzz } = require("./fizzbuzz");\n    fizzbuzz(15);\n' });
@@ -63,6 +69,7 @@ async function startPersonaFake(opts = {}) {
         }
         if (step === 's1') return n === 0 ? call('write_file', { path: 'fizzbuzz.js', content: FIZZ }) : { content: 'Created fizzbuzz.js with fizzbuzz(n).' };
         if (step === 's2') return n === 0 ? call('write_file', { path: 'test.js', content: TEST }) : { content: 'Created test.js with 5 assertions.' };
+        if (step === 's3' && opts.fastRuns) return n === 0 ? call('run_command', { command: 'node test.js' }) : { content: 'Ran node test.js: it printed the success line.' };
         if (step === 's4') return n === 0 ? call('write_file', { path: 'README.md', content: '# FizzBuzz\n\nfizzbuzz.js exports fizzbuzz(n); test.js checks it.\n' }) : { content: 'Created README.md.' };
         return { content: 'nothing to do' };
       }
@@ -72,6 +79,7 @@ async function startPersonaFake(opts = {}) {
         return { content: 'fizzbuzz.js exports fizzbuzz(n), returning Fizz/Buzz/FizzBuzz strings for 1..n. test.js asserts the output for 1..15.' };
       }
       case MODELS.reviewer: {
+        if (opts.lazyReviewer && /YOUR STEP/.test(text) && n === 0) return { content: 'VERDICT: APPROVED\nI reviewed all the files and they look fine.' };   // no file was opened
         if (n === 0) return call('read_file', { path: 'fizzbuzz.js' });
         if (n === 1) return call('read_file', { path: 'test.js' });
         if (n === 2) return call('read_file', { path: 'README.md' });

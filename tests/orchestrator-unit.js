@@ -4,7 +4,7 @@ const { execFileSync } = require('child_process');
 const { startPersonaFake, MODELS } = require('./fake-models');
 const { runDemo } = require('./orchestration-demo');
 const { createLine, verify } = require('../src/comms');
-const { createOrchestrator, extractJson, validatePlan, verdictOf } = require('../src/orchestrator');
+const { createOrchestrator, extractJson, validatePlan, verdictOf, ensureReview, routeByCapability, projectListing, stepProblem } = require('../src/orchestrator');
 const { resolveRoster, matches } = require('../src/model-roster');
 
 let pass = 0, fail = 0;
@@ -55,14 +55,15 @@ const inst = (name, size, caps = ['completion', 'tools']) => ({ name, size: size
   check('all four different models were actually called', Object.keys(byModel).sort().join() === Object.values(MODELS).sort().join(), Object.keys(byModel));
   const toolsOf = (m) => new Set((byModel[m] || []).flatMap((r) => r.tools));
   check('coder model had write tools', toolsOf(MODELS.coder).has('write_file') && toolsOf(MODELS.coder).has('run_command'));
-  check('conductor, fast and reviewer models are read-only', [MODELS.conductor, MODELS.fast, MODELS.reviewer].every((m) => !toolsOf(m).has('write_file') && !toolsOf(m).has('edit_file') && !toolsOf(m).has('run_command') && toolsOf(m).has('read_file')));
+  check('fast and reviewer models are read-only', [MODELS.fast, MODELS.reviewer].every((m) => !toolsOf(m).has('write_file') && !toolsOf(m).has('edit_file') && !toolsOf(m).has('run_command') && toolsOf(m).has('read_file')));
+  check('the conductor has NO tools (a tool call during planning swallowed the plan on a real 9B); it gets the project listing in its prompt', toolsOf(MODELS.conductor).size === 0 && E.some((e) => e.kind === 'task' && e.to === 'conductor' && /The project folder:/.test(e.text)));
   check('each agent talked to its OWN model (entries carry the right model)', E.filter((e) => e.kind === 'task' && e.to === 'coder').every((e) => e.model === MODELS.coder) && E.filter((e) => e.kind === 'task' && e.to === 'fast').every((e) => e.model === MODELS.fast) && E.filter((e) => e.kind === 'task' && e.to === 'reviewer').every((e) => e.model === MODELS.reviewer));
   check('system prompts differ per role', new Set(Object.values(byModel).map((rs) => rs[0].system)).size === 4);
 
   // hand-offs: results really travel between agents
   const taskText = (step) => E.find((e) => e.kind === 'task' && e.text.includes(`YOUR STEP ${step}:`)).text;
-  check('s3 (fast model) received the coder results of s1 and s2', /\[s1 by coder\]\s+Created fizzbuzz\.js/.test(taskText('s3')) && /\[s2 by coder\]\s+Created test\.js/.test(taskText('s3')));
-  check('s4 (coder) received the FAST model\'s description', /\[s3 by fast\]\s+fizzbuzz\.js exports fizzbuzz/.test(taskText('s4')));
+  check('s3 (fast model) received the coder results of s1 and s2', /\[s1 by coder; what the tools really did: wrote [^\]]*fizzbuzz\.js\]\s+Created fizzbuzz\.js/.test(taskText('s3')) && /\[s2 by coder; what the tools really did: wrote [^\]]*test\.js\]\s+Created test\.js/.test(taskText('s3')));
+  check('s4 (coder) received the FAST model\'s description', /\[s3 by fast; what the tools really did: 2 reads\]\s+fizzbuzz\.js exports fizzbuzz/.test(taskText('s4')));
   check('s5 (reviewer) received results from 3 earlier steps', ['s1', 's2', 's4'].every((s) => taskText('s5').includes(`[${s} by `)));
   check('steps ran in dependency order', (() => { const idx = (s) => E.findIndex((e) => e.kind === 'task' && e.text.includes(`YOUR STEP ${s}:`)); return idx('s3') > idx('s1') && idx('s3') > idx('s2') && idx('s4') > idx('s3') && idx('s5') > idx('s4'); })());
   check('reviewer asked for changes once; coder reworked; re-review approved', fake.seen.reviews === 2 && fake.seen.coderReworks === 1 && result.steps.find((s) => s.id === 's5').verdict === 'approved');
@@ -119,6 +120,111 @@ const inst = (name, size, caps = ['completion', 'tools']) => ({ name, size: size
     const r = await o.run('Make a fizzbuzz');
     check('reviewer never satisfied: one rework only, run is NOT reported as clean', r.status === 'finished-with-problems' && !r.ok && r.steps.find((s) => s.agent === 'reviewer').verdict === 'changes-needed' && f.seen.coderReworks === 1, { s: r.status, rw: f.seen.coderReworks });
     check('the final prompt told the conductor about the open review', l.entries().some((e) => e.kind === 'task' && /All steps are finished/.test(e.text) && /changes-needed/.test(e.text)));
+    await f.close(); }
+
+  // review enforced by policy: the conductor's plan has no reviewer step, so after the steps ran the orchestrator adds one
+  { const { f, l, o } = await mk({ noReviewStep: true });
+    const r = await o.run('Make a fizzbuzz');
+    const E3 = l.entries();
+    const added = r.steps.find((s) => s.added);
+    check('plan without a review: after the steps ran, the orchestrator adds one for the reviewer covering every step that wrote files', added && added.agent === 'reviewer' && added.depends_on.join() === 's1,s2,s4' && added.status === 'done', r.steps.map((s) => s.id + ':' + s.agent + ':' + s.status));
+    check('the original plan is untouched; the addition is announced in the trace with the reason', r.plan.length === 4 && !r.plan.some((s) => s.added) && E3.some((e) => e.kind === 'system' && e.from === 'orchestrator' && /s1, s2, s4 wrote or edited files but no reviewer step follows them/.test(e.text) && /adds step s5 for reviewer/.test(e.text)));
+    check('the reviewer model really ran, and the rework loop still worked', f.requests.some((r2) => r2.model === MODELS.reviewer) && r.ok && f.seen.coderReworks === 1, { ok: r.ok, rw: f.seen.coderReworks });
+    await f.close(); }
+  { const { f, l, o } = await mk({ noReviewStep: true }, { autoReview: false });
+    const r = await o.run('Make a fizzbuzz');
+    check('autoReview: false leaves the conductor\'s plan alone', !r.steps.some((s) => s.added) && !f.requests.some((r2) => r2.model === MODELS.reviewer));
+    await f.close(); }
+  { const { f, o } = await mk({});
+    const r = await o.run('Make a fizzbuzz');
+    check('a plan that already ends in a review is not changed', !r.steps.some((s) => s.added) && r.steps.length === 5);
+    await f.close(); }
+  { const ag = [{ name: 'coder', role: 'coder' }, { name: 'reviewer', role: 'reviewer' }, { name: 'fast', role: 'fast' }];
+    const S = (id, agent, deps = []) => ({ id, agent, instruction: 'x', depends_on: deps });
+    check('ensureReview: a review that follows a writer through another step counts', ensureReview([S('s1', 'coder'), S('s2', 'fast', ['s1']), S('s3', 'reviewer', ['s2'])], ag, 't').added === null);
+    const part = ensureReview([S('s1', 'coder'), S('s2', 'coder'), S('s3', 'reviewer', ['s1'])], ag, 't');
+    check('ensureReview: only the unreviewed writer is added to the new review', part.added && part.added.depends_on.join() === 's2' && part.steps.length === 4, part);
+    check('ensureReview: read-only plans (no coder step) need no review', ensureReview([S('s1', 'fast'), S('s2', 'fast', ['s1'])], ag, 't').added === null);
+    check('ensureReview: no reviewer in the roster -> plan unchanged', ensureReview([S('s1', 'coder')], [{ name: 'coder', role: 'coder' }], 't').added === null);
+    check('ensureReview: a coder step that changed nothing (it only ran a command) needs no review when the caller says so', ensureReview([S('s1', 'coder'), S('s2', 'coder')], ag, 't', (st) => st.id === 's1').added.depends_on.join() === 's1');
+    check('ensureReview: a reviewer step that failed does not count as a review', ensureReview([S('s1', 'coder'), { ...S('s2', 'reviewer', ['s1']), status: 'failed' }], ag, 't').added !== null);
+    check('ensureReview: a new id never collides with an existing one', ensureReview([S('s1', 'coder'), S('s3', 'fast')], ag, 't').added.id === 's4'); }
+
+  // a change/run step given to the read-only fast model is moved to the coder, visibly; the ledger shows what the tools really did
+  { const { f, l, o } = await mk({ fastRuns: true });
+    const r = await o.run('Make a fizzbuzz');
+    const E4 = l.entries();
+    const s3 = r.plan.find((s) => s.id === 's3');
+    check('a "Run ..." step given to the read-only fast agent is moved to the coder', s3.agent === 'coder' && s3.rerouted === 'fast', s3);
+    check('the move is announced in the trace and marked in the plan', E4.some((e) => e.kind === 'system' && /step s3 was given to fast, which can only read/.test(e.text) && /Moved to coder/.test(e.text)) && E4.some((e) => e.kind === 'plan' && /\[moved from fast, which can only read\]/.test(e.text)));
+    check('the fast model never received that step', !E4.some((e) => e.kind === 'task' && e.to === 'fast' && /YOUR STEP s3/.test(e.text)));
+    check('the final prompt lists what the tools really did, per step, and tells the conductor to flag unverified claims', E4.some((e) => e.kind === 'task' && /All steps are finished/.test(e.text) && /what the tools really did: wrote [^\]]*fizzbuzz\.js/.test(e.text) && /unverified/.test(e.text)));
+    check('the step records show the same actions', r.steps.find((s) => s.id === 's1').actions.some((a) => /^wrote .*fizzbuzz\.js$/.test(a)) && r.steps.find((s) => s.id === 's3').actions.some((a) => /^ran `node test\.js`$/.test(a)) && r.steps.find((s) => s.id === 's5').actions.join().includes('3 reads'), r.steps.map((s) => s.id + ':' + s.actions.join('|')));
+    await f.close(); }
+  { const ag = [{ name: 'coder', role: 'coder' }, { name: 'fast', role: 'fast' }, { name: 'reviewer', role: 'reviewer' }];
+    const S = (id, agent, instruction) => ({ id, agent, instruction, depends_on: [] });
+    const m = routeByCapability([S('s1', 'fast', 'Run node test.js and report'), S('s2', 'fast', 'Summarize stats.js, then run it'), S('s3', 'reviewer', 'Create a list of problems'), S('s4', 'fast', '  fix the typo in README')], ag);
+    check('routeByCapability: only steps that START with a change/run verb on a read-only fast agent move', m.moved.map((x) => x.id).join() === 's1,s4' && m.steps[1].agent === 'fast' && m.steps[2].agent === 'reviewer', m.moved);
+    check('routeByCapability: without a coder nothing moves', routeByCapability([S('s1', 'fast', 'Run it')], [{ name: 'fast', role: 'fast' }]).moved.length === 0);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'faber-list-'));
+    fs.mkdirSync(path.join(dir, 'src')); fs.mkdirSync(path.join(dir, 'node_modules')); fs.mkdirSync(path.join(dir, '.git'));
+    fs.writeFileSync(path.join(dir, 'a.js'), '12345'); fs.writeFileSync(path.join(dir, 'src', 'b.js'), '');
+    const li = projectListing(dir);
+    check('projectListing: folders first, sizes shown, dot-folders and node_modules hidden', li.split('\n')[0] === 'src/' && /a\.js \(5 bytes\)/.test(li) && !/node_modules|\.git/.test(li), li);
+    check('projectListing: empty / missing folder is explained', projectListing(fs.mkdtempSync(path.join(os.tmpdir(), 'faber-empty-'))) === '(the folder is empty)' && /no project folder/.test(projectListing('')));
+    }
+  { const { f, l, o } = await mk({});
+    await o.run('Make a fizzbuzz');
+    const T = l.entries().filter((e) => e.kind === 'task');
+    check('the fast agent\'s step prompt carries only its step (a 0.8B model took the overall task for its own job); the coder\'s keeps the overall task', T.filter((e) => e.to === 'fast').length >= 1 && T.filter((e) => e.to === 'fast').every((e) => !/Overall task/.test(e.text) && /YOUR STEP/.test(e.text)) && T.filter((e) => e.to === 'coder').every((e) => /Overall task/.test(e.text) || /asked for changes/.test(e.text)));
+    await f.close(); }
+
+
+  // the Ollama runner is killed (out of memory) while the conductor answers: one visible retry, then the run goes on
+  { const { f, l, o } = await mk({});
+    f.killFirst = 1;
+    const r = await o.run('Make a fizzbuzz');
+    const E5 = l.entries();
+    check('runner killed once: retried once, announced in the trace, run succeeds', r.ok && E5.some((e) => e.from === 'conductor' && e.kind === 'system' && /model runner stopped.*signal: killed.*retrying this request once/i.test(e.text)) && !E5.some((e) => e.kind === 'error'), E5.filter((e) => e.kind === 'error' || /runner/.test(e.text)).map((e) => e.text.slice(0, 120)));
+    await f.close(); }
+  { const { f, l, o } = await mk({});
+    f.killFirst = 2;
+    const r = await o.run('Make a fizzbuzz');
+    check('runner killed twice in a row: the second failure is NOT hidden (shown as an error, then the plan is requested again)', l.entries().some((e) => e.kind === 'error' && e.from === 'conductor' && /signal: killed/.test(e.text)) && l.entries().filter((e) => /model runner stopped/.test(e.text)).length === 1 && !!r.plan, r.status);
+    await f.close(); }
+
+  // evidence checks: a coder that only SAYS it changed a file, a reviewer that opens nothing, a reply cut off by the token limit
+  { const { f, l, o } = await mk({ coderLazyOnce: true });
+    const r = await o.run('Make a fizzbuzz');
+    const E6 = l.entries();
+    check('a coder that says "done" without writing a file is asked once more (visibly), then does it', r.ok && E6.some((e) => e.from === 'orchestrator' && /step s4: the step asked for a change but no file was written or edited\. Asking coder once more/.test(e.text)) && r.steps.find((s) => s.id === 's4').actions.includes('wrote README.md'), r.steps.map((s) => s.id + ':' + s.status + ':' + s.actions.join('|')));
+    await f.close(); }
+  { const { f, l, o } = await mk({ coderSaysDone: true });
+    const r = await o.run('Make a fizzbuzz');
+    const s4 = r.steps.find((s) => s.id === 's4');
+    check('a coder that keeps claiming a change it did not make: the step FAILS, with the reason, and what depends on it is skipped', s4.status === 'failed' && /even after asking again/.test(s4.error) && r.steps.find((s) => s.id === 's5').status === 'skipped' && !r.steps.find((s) => s.id === 's4').actions.some((a) => /^wrote /.test(a)), r.steps.map((s) => s.id + ':' + s.status));
+    check('the run is not reported as clean, and the final answer carries the orchestrator\'s own facts (s4 FAILED, from the tool log)', !r.ok && r.status === 'finished-with-problems' && /Checked by the orchestrator from the tool log/.test(r.final) && /s4 coder \(fake-coder:7b\): FAILED/.test(r.final), r.final.slice(-600));
+    check('the facts are in the trace too', l.entries().some((e) => e.kind === 'system' && e.from === 'orchestrator' && /Checked by the orchestrator from the tool log/.test(e.text)));
+    check('the work that did succeed still gets reviewed (a skipped review does not count)', r.steps.some((s) => s.added && s.status === 'done' && s.depends_on.join() === 's1,s2'), r.steps.map((s) => s.id + ':' + s.agent + ':' + s.status + (s.added ? '+' : '')));
+    await f.close(); }
+  { const { f, l, o } = await mk({ lazyReviewer: true });
+    const r = await o.run('Make a fizzbuzz');
+    const rv = r.steps.find((s) => s.agent === 'reviewer');
+    check('a reviewer that answers without opening any file is asked to read them, then reviews for real', r.ok && l.entries().some((e) => /the reviewer answered without reading any file\. Asking reviewer once more/.test(e.text)) && /3 reads/.test(rv.actions.join()), rv.actions);
+    await f.close(); }
+  { const { f, l, o } = await mk({ coderCutOff: true });
+    const r = await o.run('Make a fizzbuzz');
+    const E7 = l.entries();
+    check('a step that ends empty because of the token limit is told "continue" once, and then finishes', r.ok && E7.some((e) => /cut off by the token limit and is empty\. Asking coder once more/.test(e.text)) && E7.some((e) => e.kind === 'task' && e.to === 'coder' && e.text === 'continue') && r.steps.find((s) => s.id === 's4').status === 'done', r.steps.map((s) => s.id + ':' + s.status));
+    await f.close(); }
+  { const L = (o = {}) => ({ reads: 0, writes: [], runs: [], failed: 0, cutOff: 0, ...o });
+    check('stepProblem: a coder step that only reads is a problem when it asked for a change, not when it asked for a look', !!stepProblem('coder', 'Update README.md', 'ok', L({ reads: 1 })) && stepProblem('coder', 'Read README.md and list the headings', 'ok', L({ reads: 1 })) === null);
+    check('stepProblem: "Run ..." needs a command; a command also counts for "Create ..." (it may write through the shell)', !!stepProblem('coder', 'Run node test.js', 'ok', L({ writes: ['wrote x'] })) && stepProblem('coder', 'Run node test.js', 'ok', L({ runs: ['ran `node test.js`'] })) === null && stepProblem('coder', 'Create a.txt', 'ok', L({ runs: ['ran `echo > a.txt`'] })) === null);
+    check('stepProblem: reviewers must have read something; other roles are not checked', !!stepProblem('reviewer', 'Review it', 'VERDICT: APPROVED', L()) && stepProblem('reviewer', 'Review it', 'VERDICT: APPROVED', L({ reads: 2 })) === null && stepProblem('fast', 'Create a thing', 'ok', L()) === null);
+    check('stepProblem: empty reply after hitting the token limit -> "continue"; empty without it is not flagged here', stepProblem('coder', 'Explain', '', L({ cutOff: 1 })).nudge === 'continue' && stepProblem('coder', 'Explain', '', L()) === null); }
+  { const { f, l, o } = await mk({});
+    const r = await o.run('Make a fizzbuzz');
+    check('a clean run ends with the orchestrator\'s facts: every step with its model, status and what the tools did', r.ok && /Checked by the orchestrator from the tool log/.test(r.final) && /s1 coder \(fake-coder:7b\): done\. Tools: wrote fizzbuzz\.js/.test(r.final) && /s5 reviewer \(fake-review:3b\): done, VERDICT APPROVED\. Tools: 3 reads/.test(r.final) && /s3 fast \(fake-fast:1b\): done\. Tools: 2 reads/.test(r.final), r.final.slice(-900));
     await f.close(); }
 
   // a model that is not installed is replaced, visibly
