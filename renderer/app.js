@@ -31,10 +31,11 @@ function addTo(c, cls, text) {
 const add = (cls, text) => addTo(activeView(), cls, text);
 const sys = (t) => add('sys', t);
 // follow new output only while the reader is at the bottom
+// Single-chat mode scrolls #chat; in a split pane the view has its own scroller (v.scroller, set by features/panes.js).
 function scroll(v = activeView()) {
-  if (!v || v !== activeView() || !v.stick) return;
-  const c = $('chat');
-  c.scrollTop = c.scrollHeight;
+  if (!v || !v.stick) return;
+  const c = v.scroller || (v === activeView() ? $('chat') : null);
+  if (c) c.scrollTop = c.scrollHeight;
 }
 function paintSend() { $('sendBtn').textContent = isBusy() ? 'Stop' : 'Send'; }
 function setBusy(b, v = activeView()) { if (v) v.busy = b; if (v === activeView()) paintSend(); }
@@ -430,14 +431,14 @@ function showView(sid, force) {
   if (prev === next && !force) return;
   const c = $('chat');
   switching = true;
-  if (prev && prev !== next) {
+  if (prev && prev !== next && !prev.scroller) {
     prev.scrollTop = c.scrollTop;
     prev.stick = c.scrollHeight - c.scrollTop - c.clientHeight < 40;
     prev.el.hidden = true;
   }
   activeSid = sid;
   next.el.hidden = false;
-  c.scrollTop = next.stick ? c.scrollHeight : next.scrollTop;
+  if (!next.scroller) c.scrollTop = next.stick ? c.scrollHeight : next.scrollTop;
   requestAnimationFrame(() => { switching = false; });
   if (next.id && !force) agentCall('setActive', next.id).catch(() => {});
   renderBar();
@@ -472,10 +473,24 @@ api.on('feat:agents:event', (ev) => {
     return Faber.emit('agents', 'status');
   }
   renderEvent(v, ev, false);
+  Faber.emit('agent-event', { view: v, ev });
 });
 // Older code paths still send file changes on the chat channel (the editor listens for them).
 api.onChat((ev) => { if (ev && ev.type === 'file_changed') onFileChanged(ev.path); });
 
+// Streaming tokens only mark the message dirty; one animation frame repaints every dirty message (cheap with many panes).
+const pendingPaint = new Set();
+let paintRaf = 0;
+function queuePaint(c) {
+  pendingPaint.add(c);
+  if (paintRaf) return;
+  paintRaf = requestAnimationFrame(() => {
+    paintRaf = 0;
+    const list = [...pendingPaint];
+    pendingPaint.clear();
+    for (const x of list) if (x.cur) paint(x);
+  });
+}
 function ensureAssistant(c) {
   if (c.cur) return c.cur;
   const el = document.createElement('div');
@@ -485,6 +500,7 @@ function ensureAssistant(c) {
   return c.cur;
 }
 function endAssistant(c) {
+  if (pendingPaint.delete(c) && c.cur) paint(c);
   if (c.cur) { c.cur.el.classList.remove('cursor'); if (!c.cur.text && !c.cur.thinkEl && !c.cur.thinking) c.cur.el.remove(); }
   c.cur = null;
 }
@@ -538,8 +554,8 @@ function renderEvent(v, ev, replaying) {
   if (!c) return;
   switch (ev.type) {
     case 'user': addTo(c, 'user', ev.text); break;
-    case 'thinking': ensureAssistant(c).thinking += ev.text; paint(c); break;
-    case 'token': ensureAssistant(c).text += ev.text; paint(c); break;
+    case 'thinking': ensureAssistant(c).thinking += ev.text; queuePaint(c); break;
+    case 'token': ensureAssistant(c).text += ev.text; queuePaint(c); break;
     case 'turn_end': endAssistant(c); break;
     case 'tool_start': toolStart(c, ev); break;
     case 'tool_output': {
@@ -640,6 +656,13 @@ Faber.chat = {
     return info;
   },
   switchTo: (sid) => showView(sid),
+  views: () => [...views.values()],
+  view: (sid) => views.get(sid) || null,
+  sendTo: (sid, text) => sendTo(views.get(sid), text),
+  setBroadcast: (fn) => { broadcastHook = fn; },
+  runCommand: (line) => runCommand(line),
+  openMenu: (anchor, items, current, onPick) => openMenu(anchor, items, current, onPick),
+  efforts: EFFORTS, modes: MODE_LIST,
   rename: (sid, name) => agentCall('rename', sid, name),
   close: (sid) => agentCall('close', sid),
   update: (sid, patch) => updateSession(sid, patch),
@@ -693,6 +716,17 @@ async function runCommand(line) {
 }
 
 /* ---------- input ---------- */
+let broadcastHook = null;   // set by features/panes.js: (text) => true when it sent the text to several agents
+// Send text to one agent (used by the input inside each split pane). Stops the agent instead if it is busy.
+async function sendTo(v, text) {
+  if (!v || !v.id) return;
+  if (v.busy) return stopSession(v.id);
+  text = String(text || '').trim();
+  if (!text) return;
+  addTo(v, 'user', text);
+  setBusy(true, v);
+  try { await agentCall('send', v.id, text); } catch (e) { addTo(v, 'error', clean(e)); setBusy(false, v); }
+}
 async function submit() {
   const v = activeView();
   if (v && v.busy) { if (v.id) stopSession(v.id); return; }
@@ -701,6 +735,7 @@ async function submit() {
   sent.push(text); sentIdx = sent.length;
   $('input').value = ''; autosize(); hideSlash();
   if (text.startsWith('/')) return runCommand(text);
+  if (broadcastHook && broadcastHook(text)) return;
   if (!v || !v.id) return add('error', 'Chat is unavailable: the agents feature did not load.');
   add('user', text);
   setBusy(true, v);
