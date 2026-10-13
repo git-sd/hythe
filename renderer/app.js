@@ -89,7 +89,7 @@ let modelNames = [];
 function renderBar() {
   const chip = (id, text) => { $(id).textContent = text; $(id).insertAdjacentHTML('beforeend', CHEV); };
   const cur = activeView() ? activeView().info : settings;   // the chips show the active agent's values
-  chip('chipModel', cur.model);
+  chip('chipModel', Faber.modelLabel ? Faber.modelLabel(cur.model) : cur.model);
   chip('chipEffort', (EFFORTS.find((e) => e[0] === cur.effort) || EFFORTS[1])[1] + ' effort');
   chip('chipMode', (MODE_LIST.find((m) => m[0] === cur.mode) || MODE_LIST[0])[1]);
   const n = $('scopeNote');

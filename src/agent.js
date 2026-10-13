@@ -2,6 +2,7 @@
 // createAgent() is cheap and independent: every chat session (and every sub-agent) has its own instance.
 const os = require('os');
 const tools = require('./tools');
+const claude = require('./claude');
 
 const MAX_STEPS = 30;
 const EFFORT = {
@@ -59,6 +60,8 @@ function applyRuntime(body, s) {
   if (rt.keep_alive !== undefined && rt.keep_alive !== null && rt.keep_alive !== '') body.keep_alive = rt.keep_alive;
 }
 
+// Claude-only fields (raw blocks with thinking signatures) must not be sent to Ollama.
+const plain = (m) => { if (!m.claude) return m; const { claude: _c, claudeModel: _m, ...rest } = m; return rest; };
 const rid = () => Math.random().toString(36).slice(2);
 const abortError = () => Object.assign(new Error('aborted'), { name: 'AbortError' });
 
@@ -124,6 +127,7 @@ function createAgent(opts) {
 
   async function* stream(body, signal) {
     const s = getSettings();
+    if (claude.isClaude(body.model)) { yield* claude.stream(body, signal, s); return; }
     let res;
     try {
       res = await fetch(`${s.host}/api/chat`, { method: 'POST', body: JSON.stringify(body), signal, headers: { 'Content-Type': 'application/json' } });
@@ -159,14 +163,14 @@ function createAgent(opts) {
     const list = s.hasFolder ? offered() : [];
     const body = {
       model: s.model,
-      messages: [{ role: 'system', content: systemPrompt(s, role, depth === 0 && !allowedTools && list.some((t) => t.function.name === 'delegate_task')) }, ...conv],
+      messages: [{ role: 'system', content: systemPrompt(s, role, depth === 0 && !allowedTools && list.some((t) => t.function.name === 'delegate_task')) }, ...(claude.isClaude(s.model) ? conv : conv.map(plain))],
       tools: list.length ? list : undefined,
       stream: true,
       think: eff.think,
       options: { temperature: eff.temperature, num_predict: eff.num_predict, num_ctx: s.numCtx || 16384 },
     };
     applyRuntime(body, s);
-    let content = '', thinking = '';
+    let content = '', thinking = '', raw = null;
     const calls = [];
     let final = null;
     const t0 = Date.now();
@@ -187,6 +191,7 @@ function createAgent(opts) {
           if (m.thinking) { thinking += m.thinking; emit({ type: 'thinking', text: m.thinking }); }
           if (m.content) { content += m.content; emit({ type: 'token', text: m.content }); }
           if (m.tool_calls) calls.push(...m.tool_calls);
+          if (m.raw) raw = { claude: m.raw, claudeModel: m.rawModel };
           if (part.done) final = part;
         }
       } finally { if (release) release(); }
@@ -194,7 +199,7 @@ function createAgent(opts) {
     logRequest();
     try { await run(); } catch (e) {
       // Model without thinking support: retry once without the flag.
-      if (e.status === 400 && /think/i.test(e.body || '')) { delete body.think; logRequest('without think'); await run(); } else throw e;
+      if (!claude.isClaude(body.model) && e.status === 400 && /think/i.test(e.body || '')) { delete body.think; logRequest('without think'); await run(); } else throw e;
     }
     if (debugSink) {
       const f = final || {};
@@ -209,7 +214,8 @@ function createAgent(opts) {
         contentChars: content.length, thinkingChars: thinking.length, toolCalls: calls.length, wallMs: Date.now() - t0,
       });
     }
-    return { content, calls };
+    if (final && final.done_reason === 'length') emit({ type: 'notice', text: 'The reply was cut off by the token limit. Say "continue" to go on.' });
+    return { content, calls, raw };
   }
 
   // Resolves to { text, stopped, error, limit }. Events are emitted along the way.
@@ -222,10 +228,10 @@ function createAgent(opts) {
     try {
       let step = 0;
       for (; step < maxSteps; step++) {
-        const { content, calls } = await turn(signal, step);
+        const { content, calls, raw } = await turn(signal, step);
         result.steps = step + 1;
         if (content.trim()) result.text = content;
-        conv.push({ role: 'assistant', content, ...(calls.length ? { tool_calls: calls } : {}) });
+        conv.push({ role: 'assistant', content, ...(calls.length ? { tool_calls: calls } : {}), ...(raw || {}) });
         changed();
         if (!calls.length) break;
         emit({ type: 'turn_end' });
@@ -290,9 +296,19 @@ function createAgent(opts) {
     if (abort) throw new Error('Stop the current run first.');
     if (!conv.length) return 'Nothing to compact.';
     const s = getSettings();
+    const ask = 'Summarize our conversation so far in under 300 words: goals, decisions, files changed, open tasks.';
+    if (claude.isClaude(s.model)) {
+      const release = gate ? await gate(id, null) : null;
+      let summary;
+      try { summary = await claude.complete([...conv, { role: 'user', content: ask }], s.model); } finally { if (release) release(); }
+      if (!summary.trim()) throw new Error('The model returned an empty summary.');
+      conv = [{ role: 'user', content: `Summary of the conversation so far:\n${summary}` }, { role: 'assistant', content: 'Understood.' }];
+      changed();
+      return summary;
+    }
     const body = {
       model: s.model, stream: false, think: false,
-      messages: [...conv, { role: 'user', content: 'Summarize our conversation so far in under 300 words: goals, decisions, files changed, open tasks.' }],
+      messages: [...conv.map(plain), { role: 'user', content: ask }],
     };
     body.options = {};
     applyRuntime(body, s);
