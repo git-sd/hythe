@@ -92,9 +92,27 @@
         <label class="sideFoot"><input type="checkbox" id="hiddenChk"> Show hidden files</label>
         </div>
       </aside>
-      <main>
-        <div id="chat"></div>
-        <section id="term" hidden>
+      <div id="dock"></div>
+    </div>
+  </div>
+  <!-- panels live here while hidden; renderer/dock.js moves them into the layout -->
+  <div id="dockPark" hidden>
+    <main id="chatPanel">
+      <div id="chat"></div>
+      <div class="inputWrap">
+          <div id="slashMenu" hidden></div>
+          <textarea id="input" rows="1" placeholder="Message Faber…   / for commands · Shift+Enter for new line"></textarea>
+          <button id="sendBtn" class="primary">Send</button>
+      </div>
+      <div id="bar">
+          <button class="chip" id="chipModel" title="Model"></button>
+          <button class="chip" id="chipEffort" title="Reasoning effort"></button>
+          <button class="chip" id="chipMode" title="Permissions"></button>
+          <span class="spacer"></span>
+          <span id="scopeNote"></span>
+      </div>
+    </main>
+      <section id="term" hidden>
           <div id="termSplit"></div>
           <div class="termBar">
             <div id="termTabs"></div>
@@ -103,53 +121,19 @@
             <button class="ghost" id="termClose">Hide</button>
           </div>
           <div id="termHost"></div>
-        </section>
-        <div class="inputWrap">
-          <div id="slashMenu" hidden></div>
-          <textarea id="input" rows="1" placeholder="Message Faber…   / for commands · Shift+Enter for new line"></textarea>
-          <button id="sendBtn" class="primary">Send</button>
-        </div>
-        <div id="bar">
-          <button class="chip" id="chipModel" title="Model"></button>
-          <button class="chip" id="chipEffort" title="Reasoning effort"></button>
-          <button class="chip" id="chipMode" title="Permissions"></button>
-          <span class="spacer"></span>
-          <span id="scopeNote"></span>
-        </div>
-      </main>
-      <div id="split" hidden></div>
-      <section id="editor" hidden>
-        <div id="tabs"></div>
-        <div class="edBar">
-          <span id="edPath" class="muted small"></span>
-          <span class="spacer"></span>
-          <button class="ghost" id="edMention" title="Add this file to your message">Add to chat</button>
-          <button class="ghost" id="edSave" title="Save (Ctrl+S)">Save</button>
-          <button class="ghost icon" id="edHide" title="Hide editor"><svg viewBox="0 0 16 16"><path d="M4.1 3L8 6.9 11.9 3 13 4.1 9.1 8l3.9 3.9-1.1 1.1L8 9.1 4.1 13 3 11.9 6.9 8 3 4.1z"/></svg></button>
-        </div>
-        <div id="edConflict" hidden>
-          <span>This file changed on disk, but you have unsaved edits here.</span>
-          <span class="spacer"></span>
-          <button id="edReload">Load disk version</button>
-          <button id="edKeep">Keep mine</button>
-        </div>
-        <div id="edBody" hidden>
-          <pre id="edGutter"></pre>
-          <div id="edWrap"><div id="edFlash"></div><pre id="edHl"></pre><textarea id="edText" spellcheck="false" wrap="off" autocomplete="off"></textarea></div>
-        </div>
-        <div id="edEmpty">Click a file in the sidebar to open it here.</div>
       </section>
-    </div>
   </div>
   <div id="pop" hidden></div>
   <script src="faber.js"></script>
   <script src="vendor/xterm.js"></script>
   <script src="vendor/addon-fit.js"></script>
   <script src="app.js"></script>
+  <script src="dock.js"></script>
   <script src="editor.js"></script>
   <script src="terminal.js"></script>
   <script src="menubar.js"></script>
   <script src="search.js"></script>
+  <script src="layout.js"></script>
   <script src="features/ui-settings.js"></script>
   <script src="features/background.js"></script>
   <script src="features/agents.js"></script>

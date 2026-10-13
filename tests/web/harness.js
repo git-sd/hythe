@@ -18,6 +18,21 @@ function playwright() {
   return require(path.join(execSync('npm root -g').toString().trim(), 'playwright'));
 }
 
+// A pretend shell: echoes what you type after a prompt. Enough to exercise the terminal panel (xterm + layout).
+const fakePty = {
+  spawn(shell, args, o) {
+    const dataCbs = [], exitCbs = [];
+    const emit = (d) => dataCbs.forEach((f) => f(d));
+    setTimeout(() => emit('fake-shell$ '), 10);
+    return {
+      cols: o.cols, rows: o.rows, cwd: o.cwd,
+      onData: (f) => dataCbs.push(f), onExit: (f) => exitCbs.push(f),
+      write: (d) => emit(d.replace(/\r/g, '\r\n') + (d.includes('\r') ? 'fake-shell$ ' : '')),
+      resize() {}, kill() { exitCbs.forEach((f) => f({ exitCode: 0 })); },
+    };
+  },
+};
+
 let booted = null;   // main.js can only be required once per process
 async function launch(opts = {}) {
   const userData = opts.userData || fs.mkdtempSync(path.join(os.tmpdir(), 'faber-web-'));
@@ -61,7 +76,7 @@ async function launch(opts = {}) {
   const origLoad = Module._load;
   Module._load = function (request, ...rest) {
     if (request === 'electron') return electron;
-    if (request === '@lydell/node-pty') throw new Error('node-pty not available in the web harness');
+    if (request === '@lydell/node-pty') return fakePty;
     return origLoad.call(this, request, ...rest);
   };
   require(path.join(ROOT, 'main.js'));
