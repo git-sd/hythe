@@ -81,13 +81,38 @@ What the orchestrator now does itself, because the real models did not:
   A model cannot talk its way into that block (run 4).
 - A request that dies because Ollama's model runner was killed is retried once, visibly (run 2).
 
+## 4. Talking to the orchestrator (real models, terminal chat)
+
+`node tools/orchestra-cli.js chat` on the same machine and models. The conversation, in order: "I want 4 agents: 2 coders, a reviewer and a fast
+helper" -> "use qwen3.5:4b for the coders" -> "use qwen3:4b-instruct-2507 for the reviewer" -> "show the team" -> "don't ask me anything" -> a task
+(fix `slugify()` so `Hello,  World!` becomes `hello-world`, add a test, add a Usage section) -> "ask coder2 to add a line to README.md saying the
+module has no dependencies". Raw output: `evidence/chat-real.console.txt`, trace `evidence/chat-real.trace.jsonl` (121 entries, chain verified,
+27 of them the conversation itself).
+
+- **It worked as asked.** Four agents were created from one sentence; the 9B conductor's plan used `coder1` and `coder2` by name, so the two
+  coders (same 4B model) split the steps; the 0.8B helper read the file, the reviewer (a different model) read three files and approved; the
+  direct question went to `coder2` alone and it really did append the line (I checked the file). 1,028 s for the task on this CPU.
+- **Verified by me afterwards:** the code fix is right (`Hello,  World!` -> `hello-world`, and other inputs behave), `test.js` passes 6/6 and
+  exits non-zero on failure (an improvement on the earlier runs' tests). **Not right:** the README's Usage example calls
+  `require('./test').runTests()`, which does not exist, and the reviewer approved it. The orchestrator's own tool-log block was correct about
+  what each agent did; it cannot judge whether the content is right.
+- **A first attempt failed for an environmental reason and exposed a bug.** The volume's page cache was cold and read at about 17 MB/s
+  (`evidence/chat-real-attempt1-cold-disk.console.txt`), so the 9B did not finish loading within the 5 minutes Node's `fetch` waits for a
+  first response. Faber reported "Cannot reach Ollama", which was wrong: Ollama was up and loading. Now a timeout is reported as "Ollama is
+  running but did not answer within 5 minutes ... try again (the part already read is cached)", and the request is retried once. After the
+  model files were read once (`cat file > /dev/null`) the second attempt ran normally. (A real PC's disk is much faster; the lesson is that
+  "slow" and "unreachable" must not look the same.)
+- The team commands in that conversation were understood by rules, not by a model, so they answered instantly; only the task used the models.
+
 ## What was NOT verified
 
 - The nudge-then-fail path for a lazy coder, a reviewer that reads nothing and a cut-off reply is tested only with scripted models
   (`tests/orchestrator-unit.js`). In run 5 the real models did the work properly, so those paths never fired on a real model.
-- Five runs on two small tasks. Small models vary from run to run; run 4 failed where runs 3 and 5 did not.
-- The Orchestra tab and Trace panel in the app were tested in a browser harness with scripted models, not with these real models, and not
-  in real Electron.
+- Five orchestration runs and one chat session, on three small tasks. Small models vary from run to run; run 4 failed where runs 3 and 5 did not.
+- The chat's understanding of what you type is a rule set tested on about 120 phrasings, not a language model. A sentence it does not recognise
+  is treated as a task, so an unusual way of asking for agents may start a task instead; "undo" and the explanation of what it understood are the safety net.
+- The Orchestra tab (chat and form) and the Trace panel were tested in a browser harness with scripted models, not with these real models, and
+  not in real Electron. The terminal chat is the one that ran with real models.
 - Nothing was run on Windows, with a GPU, or with the Claude provider.
 - The reviewers approve tests that cannot catch the bug they are about. The orchestrator checks that a review happened, not that it was good.
 

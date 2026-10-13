@@ -102,6 +102,14 @@ feature veto `write_file` / `edit_file` (team file claims); it does NOT cover `r
   step, not the whole task; after the steps ran, any step whose tools really wrote files and has no reviewer step after it gets one
   (`autoReview`, on by default); every step records what its tools REALLY did (`step.actions`) and the conductor is told to flag
   report claims that the tool list does not show.
+- `src/orchestrator-chat.js`: TALKING to the orchestrator ("I want 4 agents", "add a reviewer", "use qwen3.5:4b for the coders", "build a
+  snake game"). Team commands are understood by RULES (instant, offline, unit-tested on many phrasings: `parseIntent`), not by a model;
+  anything that is not a team command is a task and goes to the conductor. It keeps the team (agents are `{name, role, model, focus?}`;
+  kinds such as tester/writer are a coder with a specialty `focus`), says what it understood, and supports `undo`. Long work (a run, a
+  direct "ask coder1 ...") runs in the background so "stop" always works. Every message in both directions goes through `onMessage`; the
+  app logs them on the communication line (owner <-> orchestrator, `meta.chat`). Used by the Orchestra tab (`src/features/orchestra.js`,
+  channels `chat-state`, `chat-send`, `chat-reset`, event `chat`) and by `tools/orchestra-cli.js chat`. The team and the last 40 messages are
+  saved in the feature settings. To teach it a new phrase, add a case to `tests/orchestrator-chat-unit.js` first.
 - `src/model-roster.js`: role -> model from what is installed (code specialist, smallest tool-capable model as the speed helper,
   a reviewer different from the coder), with optional download SUGGESTIONS (never installed automatically).
 - `src/cpu-tune.js`: core detection, profile (threads, context, mmap, keep_alive, Ollama env vars), quantization advice, `benchmark()`
@@ -109,7 +117,7 @@ feature veto `write_file` / `edit_file` (team file claims); it does NOT cover `r
   the benchmark measures the real speed. Advice must follow measurements, not folklore: on a CPU with VNNI/AMX, Q8_0 measured FASTER
   than Q4_K_M, and a quantized KV cache measured SLOWER (it only saves memory), so both rules are feature- and RAM-dependent.
 - `src/agent.js` retries a request once when Ollama's model runner died before answering ("signal: killed", "unexpected EOF"), and says so.
-- Command line: `node tools/orchestra-cli.js run "<task>" | roster | tune --model M [--autotune] | bench --models a,b | verify <trace.jsonl> | demo`.
+- Command line: `node tools/orchestra-cli.js run "<task>" | roster | tune --model M [--autotune] | bench --models a,b | chat | verify <trace.jsonl> | demo`.
 
 ## Online provider (Claude)
 
@@ -153,8 +161,10 @@ and a fake PTY. It works on Linux and Windows and needs no display. Run: `NODE_P
     tests/web/layout-regress.js   port of layout-scroll-smoke (the page never scrolls)
     tests/web/dock-gui.js         drag to dock, stacking, editor groups, save/restore layouts
     tests/web/panes-gui.js  team-gui.js  team-main.js  claude-gui.js  resources-gui.js
-    tests/web/orchestra-gui.js    Orchestra tab + Trace panel: four models, filters, verify, export, approvals, stop
-    tests/claude-unit.js  team-unit.js  resources-unit.js  comms-unit.js  cpu-tune-unit.js  orchestrator-unit.js  cli-unit.js
+    tests/web/orchestra-gui.js    Orchestra tab (task form) + Trace panel: four models, filters, verify, export, approvals, stop
+    tests/web/orchestra-chat-gui.js  talk to the orchestrator: create/replace/add/remove agents, undo, a task with the team, stop, ask one agent
+    tests/web/orchestra-chat-restore.js  the saved team and conversation come back after a restart
+    tests/claude-unit.js  team-unit.js  resources-unit.js  comms-unit.js  cpu-tune-unit.js  orchestrator-unit.js  orchestrator-chat-unit.js  cli-unit.js
                                   plain Node, no browser. fake-models.js = four scripted models behind one fake Ollama.
     tests/orchestration-demo.js   prints a full multi-agent trace to the console (node tests/orchestration-demo.js)
     tests/web/run-all.js          runs everything above, one process per file
