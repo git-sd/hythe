@@ -43,6 +43,25 @@ const cli = (args, input) => new Promise((resolve) => {
   check('--mode ask: asks for approval on stdin and a "no" blocks the write', /APPROVAL:/.test(ask.out) && !fs.existsSync(path.join(askDir, 'fizzbuzz.js')), ask.out.slice(0, 300));
   check('--mode ask: the question and the denial are both in the trace output', /QUESTION/.test(ask.out) && /ANSWER\s+owner/.test(ask.out) && /denied/.test(ask.out));
 
+  // ---- talking to the orchestrator in the terminal ----
+  const chatDir = fs.mkdtempSync(path.join(os.tmpdir(), 'faber-cli-chat-'));
+  const chatTrace = path.join(os.tmpdir(), `faber-cli-chat-trace-${Date.now()}.jsonl`);
+  const chatOut = await cli(['chat', '--host', host, '--dir', chatDir, '--trace', chatTrace],
+    ['help', 'create 4 agents', `use ${MODELS.coder} for the coders`, `use ${MODELS.reviewer} for the reviewer`, "don't ask me anything", 'show the team', 'Create a small FizzBuzz module with fizzbuzz.js, test.js and README.md', ''].join('\n'));
+  check('chat: exits 0 and prints a banner', chatOut.code === 0 && /FABER ORCHESTRATOR CHAT/.test(chatOut.out), chatOut.out.slice(0, 300) + chatOut.err);
+  check('chat: "create 4 agents" answers in chat style with the team', /orchestrator> I created 4 agents:/.test(chatOut.out) && /coder1\s+coder\s+/.test(chatOut.out) && /helper1\s+fast helper\s+/.test(chatOut.out), chatOut.out.slice(0, 900));
+  check('chat: "help" lists what it understands', /create 4 agents/.test(chatOut.out) && /I plan it and hand the steps to the agents/.test(chatOut.out));
+  check('chat: model changes are confirmed', /coder1, coder2 now use fake-coder:7b/.test(chatOut.out));
+  check('chat: the task runs with the new team: plan, steps for coder1 / reviewer1 / helper1, a final answer', /Plan from the conductor/.test(chatOut.out) && /orchestrator -> coder1/.test(chatOut.out) && /orchestrator -> reviewer1/.test(chatOut.out) && /orchestrator -> helper1/.test(chatOut.out) && /Done\./.test(chatOut.out), chatOut.out.slice(-1200));
+  check('chat: the agents\' work is real (files created in the folder)', ['fizzbuzz.js', 'test.js', 'README.md'].every((f) => fs.existsSync(path.join(chatDir, f))));
+  check('chat: ends with the trace integrity line', /Trace integrity: VERIFIED/.test(chatOut.out));
+  const CE = fs.readFileSync(chatTrace, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  check('chat: the conversation is in the trace file (owner -> orchestrator and back) and the chain verifies', verify(CE).ok && CE.some((e) => e.from === 'owner' && e.to === 'orchestrator' && e.text === 'create 4 agents') && CE.some((e) => e.from === 'orchestrator' && e.to === 'owner' && /I created 4 agents/.test(e.text)));
+  const chat2 = await cli(['chat', '--host', host, '--dir', chatDir], 'create 3 agents\nremove coder1\nundo\nshow the team\nquit\n');
+  check('chat: remove and undo work, "quit" ends the session', /Removed coder1/.test(chat2.out) && /Undone/.test(chat2.out) && chat2.code === 0);
+  const chat3 = await cli(['chat', '--host', 'http://127.0.0.1:1', '--dir', chatDir], 'create 2 agents\n');
+  check('chat: with Ollama down it still creates agents (on the primary model, if one is given) or asks you to start Ollama', /cannot reach Ollama/i.test(chat3.out) && chat3.code === 0, chat3.out.slice(0, 400));
+
   const ver = await cli(['verify', trace]);
   check('verify: an untouched saved trace is reported intact, with the models in it', ver.code === 0 && /Trace intact: \d+ entries, chain unbroken, 4 model\(s\)/.test(ver.out), ver);
   const shown = await cli(['verify', trace, '--show']);

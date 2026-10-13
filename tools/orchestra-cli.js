@@ -10,6 +10,8 @@
 //   node tools/orchestra-cli.js tune --model <model> [--host <url>] [--autotune] [--candidates 1,2,3,4] [--tokens 48]
 //   node tools/orchestra-cli.js bench --models <a,b,c> [--threads N] [--tokens 48] [--long <prompt tokens>] [--ctx N] [--host <url>]   (same options, one row per model: compare quantizations or sizes)
 //   node tools/orchestra-cli.js demo                      (scripted models, no Ollama needed)
+//   node tools/orchestra-cli.js chat [--dir <folder>] [--host <url>] [--effort low] [--ctx 4096] [--runtime <file>] [--trace <file>]
+//        talk to the orchestrator: "create 4 agents", "add a reviewer", "build a snake game" (type "help"; Ctrl-D or "quit" ends; piped input works too)
 //   node tools/orchestra-cli.js verify <trace.jsonl> [--show] [--full]   (check that a saved trace was not altered; --show prints every message)
 const fs = require('fs');
 const os = require('os');
@@ -17,6 +19,7 @@ const path = require('path');
 const readline = require('readline');
 const { createLine, verify } = require('../src/comms');
 const { createOrchestrator } = require('../src/orchestrator');
+const { createChat } = require('../src/orchestrator-chat');
 const { resolveRoster } = require('../src/model-roster');
 const cpuTune = require('../src/cpu-tune');
 
@@ -130,6 +133,81 @@ function cmdVerify() {
   process.exit(v.ok ? 0 : 3);
 }
 
+// Talk to the orchestrator in the terminal. Same brain as the Orchestra tab (src/orchestrator-chat.js).
+async function cmdChat() {
+  const dir = path.resolve(flags.dir || process.cwd());
+  if (!fs.existsSync(dir)) throw new Error(`Folder not found: ${dir}`);
+  const traceFile = flags.trace ? path.resolve(flags.trace) : path.join(os.tmpdir(), `faber-trace-${Date.now()}.jsonl`);
+  const line = createLine({ file: traceFile, clip: flags.full ? 1e9 : 500, color });
+  // agent traffic prints as trace lines; the conversation itself prints in chat style (and is on the line too)
+  line.on((e) => { if (!(e.meta && e.meta.chat)) console.log(line.format(e)); });
+  const features = flags.runtime ? { models: { runtime: JSON.parse(fs.readFileSync(path.resolve(flags.runtime), 'utf8')) } } : {};
+  const effort = ['low', 'medium', 'high'].includes(flags.effort) ? flags.effort : 'medium';
+
+  const queued = [], waiting = [];
+  let eof = false, approval = null, current = null;
+  const rl = readline.createInterface({ input: process.stdin });
+  rl.on('line', (l) => { const w = waiting.shift(); if (w) w(l); else queued.push(l); });
+  rl.on('close', () => { eof = true; while (waiting.length) waiting.shift()(null); if (approval) { const a = approval; approval = null; a(''); } });   // no more input: a waiting question is a "no"
+  const nextLine = () => (queued.length ? Promise.resolve(queued.shift()) : eof ? Promise.resolve(null) : new Promise((r) => waiting.push(r)));
+
+  let installedCache = [], installedAt = 0;
+  const env = async () => {
+    try { if (!installedCache.length || Date.now() - installedAt > 20000) { installedCache = await installed(); installedAt = Date.now(); } return { ok: true, installed: installedCache, primary: flags.conductor || flags.model || (installedCache[0] && installedCache[0].name) || '', ramTotal: os.totalmem(), workspace: dir }; }
+    catch { return { ok: false, installed: [], primary: flags.conductor || flags.model || '', ramTotal: os.totalmem(), workspace: dir }; }
+  };
+  const makeOrch = (team, conductorModel, mode, concurrency) => {
+    const primary = flags.conductor || flags.model || (installedCache[0] && installedCache[0].name) || '';
+    const r = resolveRoster({ installed: installedCache, primary, ramTotal: os.totalmem() });
+    return createOrchestrator({
+      host, workspace: dir, line, mode, effort, numCtx: Number(flags.ctx) || 8192, features,
+      concurrency, maxRework: flags.rework === undefined ? 1 : Number(flags.rework), stepTimeoutSec: Number(flags.timeout) || 900,
+      roster: { conductor: { model: conductorModel || (r.roster.find((x) => x.role === 'conductor') || {}).model || primary }, agents: team.map((a) => ({ ...a })) },
+      installed: installedCache.map((m) => m.name), fallbackModel: primary,
+      approve: (kind, title, detail) => new Promise((resolve) => { if (eof) { console.log(`\n>>> APPROVAL: ${title}\n(no input left: denied)`); return resolve(false); } console.log(`\n>>> APPROVAL: ${title}\n${String(detail).slice(0, 600)}\nAllow? [y/N] (type y or n)`); approval = (a) => resolve(/^y/i.test(a || '')); }),
+    });
+  };
+  let state = { mode: 'edits' };
+  const chat = createChat({
+    getEnv: env,
+    startRun: async (job) => { state.mode = job.mode; current = makeOrch(job.team, job.conductor, job.mode, job.concurrency); current.onState(job.onState); const r = await current.run(job.task); current = null; return r; },
+    ask: async (name, text, team, conductorModel) => { current = makeOrch(team, conductorModel, state.mode, 1); try { return await current.ask(name, text); } finally { current = null; } },
+    stop: () => { if (current) current.stop(); },
+    onMessage: (m) => {
+      line.log(m.from === 'you'
+        ? { from: 'owner', to: 'orchestrator', kind: 'task', text: m.text, meta: { chat: true } }
+        : { from: 'orchestrator', to: 'owner', kind: m.kind === 'final' ? 'final' : 'result', text: m.text, meta: { chat: true, shown: m.kind } });
+      if (m.from !== 'you') console.log((color ? '\x1b[35m' : '') + 'orchestrator>' + (color ? '\x1b[0m' : '') + ' ' + m.text.replace(/\n/g, '\n              '));
+    },
+    onChange: () => {},
+  });
+  process.on('SIGINT', () => { say('\nStopping...'); if (current) current.stop(); });
+  say('='.repeat(78));
+  say('FABER ORCHESTRATOR CHAT');
+  say('='.repeat(78));
+  say(`Folder: ${dir}    Ollama: ${host}`);
+  say('Tell me how many agents you want, for example "create 4 agents". Say "help" to see everything I understand. Ctrl-D or "quit" ends.');
+  say('-'.repeat(78));
+  const prompt = () => { if (process.stdin.isTTY) process.stdout.write((color ? '\x1b[36m' : '') + 'you>' + (color ? '\x1b[0m' : '') + ' '); };
+  prompt();
+  for (;;) {
+    const l = await nextLine();
+    if (l === null) break;
+    if (approval) { const a = approval; approval = null; a(l); continue; }
+    if (/^(quit|exit|bye)$/i.test(l.trim())) break;
+    await chat.handle(l);
+    prompt();
+  }
+  if (!process.stdin.isTTY || eof) { /* piped input: let the work that was asked for finish */ }
+  await chat.idle();
+  rl.close();
+  const v = line.verify();
+  say('-'.repeat(78));
+  say(`Trace integrity: ${v.ok ? 'VERIFIED' : 'BROKEN'} (${v.count} entries). Full trace: ${traceFile}`);
+  say('='.repeat(78));
+  process.exit(0);
+}
+
 async function cmdRun() {
   const task = rest.join(' ').trim();
   if (!task) throw new Error('Usage: run "<task>" [--dir <folder>] ...');
@@ -193,6 +271,7 @@ async function cmdRun() {
     else if (cmd === 'tune') await cmdTune();
     else if (cmd === 'bench') await cmdBench();
     else if (cmd === 'verify') cmdVerify();
+    else if (cmd === 'chat') await cmdChat();
     else if (cmd === 'demo') { const { runDemo } = require('../tests/orchestration-demo'); const r = await runDemo({ color, full: flags.full }); await r.fake.close(); process.exit(r.result.ok && r.testOk ? 0 : 1); }
     else {
       say(fs.readFileSync(__filename, 'utf8').split('\n').filter((l) => l.startsWith('//')).map((l) => l.slice(3)).join('\n'));
